@@ -1,0 +1,1679 @@
+<title>PLCopen Motion Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: instrument-panel dashboard. Motors + state machine on top, timing diagram beside the narration, function blocks below. */
+:root{
+  --bg:#e9edf0; --panel:#f6f8f9; --ink:#14212a; --muted:#566872; --line:#c3ccd2; --grid:#d6dde1;
+  --fb:#b4bbc0; --fbcell:#dde2e5; --fbhead:#9aa3a9;
+  --master:#b86e00; --slave:#0a7ca3; --sig:#1b34e6;
+  --ok:#1b8a49; --bad:#c42b2b; --warn:#b36b00;
+  --font:"IBM Plex Sans",system-ui,sans-serif; --head:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e161b; --panel:#162229; --ink:#e5edf1; --muted:#8ea2ad; --line:#2a3b45; --grid:#233540;
+  --fb:#3b454c; --fbcell:#4c5860; --fbhead:#2e383e;
+  --master:#f0a431; --slave:#38b7e3; --sig:#8294ff;
+  --ok:#47c67d; --bad:#ff6d6d; --warn:#f0b04a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e161b; --panel:#162229; --ink:#e5edf1; --muted:#8ea2ad; --line:#2a3b45; --grid:#233540;
+  --fb:#3b454c; --fbcell:#4c5860; --fbhead:#2e383e;
+  --master:#f0a431; --slave:#38b7e3; --sig:#8294ff;
+  --ok:#47c67d; --bad:#ff6d6d; --warn:#f0b04a; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.45;
+  padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1480px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+h1{font:600 30px/1.1 var(--head);margin:0;letter-spacing:.2px}
+h2{font:600 15px/1.2 var(--head);margin:0 0 10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.sub{margin:4px 0 0;color:var(--muted);max-width:75ch}
+.tabs{display:flex;flex-wrap:wrap;gap:6px}
+.tab{font:500 13px var(--font);padding:8px 12px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:6px;cursor:pointer;text-align:left}
+.tab small{display:block;color:var(--muted);font-weight:400;font-size:11px}
+.tab[aria-selected="true"]{border-color:var(--sig);box-shadow:inset 0 -3px 0 var(--sig)}
+.tab:focus-visible,button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--sig);outline-offset:2px}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.btn{font:500 13px var(--font);padding:7px 14px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:6px;cursor:pointer}
+.btn.pri{background:var(--sig);color:#fff;border-color:var(--sig)}
+.bar label{color:var(--muted);font-size:12px}
+select{font:400 13px var(--font);padding:6px 8px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px}
+.clock{font:500 13px var(--mono);margin-left:auto;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;min-width:0}
+.motors{grid-column:span 7}.state{grid-column:span 5}.story{grid-column:span 4}.graph{grid-column:span 8}.fbs{grid-column:span 12}
+@media (max-width:1100px){.motors,.state,.story,.graph{grid-column:span 12}}
+canvas{display:block;width:100%}
+#sm{width:100%;height:auto;display:block}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--muted);margin-top:8px}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+#say{font:500 16px/1.4 var(--font);margin:0 0 12px;min-height:5.6em}
+#log{list-style:none;margin:0;padding:0;max-height:300px;overflow:auto;font:400 12px/1.5 var(--mono);border-top:1px solid var(--line)}
+#log li{padding:3px 0;border-bottom:1px solid var(--grid);display:flex;gap:8px}
+#log .t{color:var(--muted);flex:none;width:46px;text-align:right}
+#log .M{color:var(--master)}#log .S{color:var(--slave)}#log .F{color:var(--bad)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;align-items:center}
+.chip{font:400 11px var(--mono);padding:3px 4px 3px 8px;border:1px solid var(--line);border-radius:12px;display:inline-flex;gap:4px;align-items:center}
+.chip button{border:0;background:none;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:0 4px}
+.axhead{font:600 14px var(--head);margin:14px 0 8px;display:flex;align-items:center;gap:8px}
+.axhead:first-of-type{margin-top:0}
+.axhead .sw{width:12px;height:12px;border-radius:2px}
+.axhead .sp{margin-left:auto;display:flex;gap:6px}
+.fbgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px}
+.fb{background:var(--fb);border:1px solid var(--fbhead);border-radius:3px;font-size:12px;min-width:0}
+.fb.active{box-shadow:0 0 0 2px var(--sig)}
+.fb header{background:var(--fbhead);padding:4px 8px;text-align:center;font:600 13px var(--font);color:var(--ink)}
+.fb header small{display:block;font:400 10px var(--mono);color:var(--muted)}
+.fb .body{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:1px 6px;padding:5px}
+.pin{display:flex;align-items:center;justify-content:space-between;background:var(--fbcell);padding:2px 5px;margin-bottom:2px;min-height:23px;gap:4px;min-width:0}
+.pin>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px}
+.pin input{width:58px;font:400 11px var(--mono);padding:1px 3px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:2px}
+.tg{font:500 10px var(--mono);border:1px solid var(--line);background:var(--panel);color:var(--muted);padding:1px 6px;border-radius:2px;cursor:pointer}
+.tg.on{background:var(--sig);color:#fff;border-color:var(--sig)}
+.led{font:500 10px var(--mono);padding:1px 6px;border-radius:2px;background:var(--panel);color:var(--muted);border:1px solid var(--line);min-width:0;flex:none;text-align:center}
+.led.on{background:var(--ok);color:#fff;border-color:var(--ok)}
+.led.on.bad{background:var(--bad);border-color:var(--bad)}
+.led.on.warn{background:var(--warn);border-color:var(--warn)}
+.note{font-size:12px;color:var(--muted);margin:12px 0 0}
+.errs{display:flex;flex-wrap:wrap;gap:4px 16px;font:400 11px var(--mono);color:var(--muted);margin-top:8px}
+.node rect.box{fill:var(--panel);stroke:var(--sig);stroke-width:2.5}
+.node.m rect.box{fill:color-mix(in srgb,var(--master) 22%,var(--panel))}
+.node.s rect.box{fill:color-mix(in srgb,var(--slave) 22%,var(--panel))}
+.node.m.s rect.box{fill:color-mix(in srgb,var(--ok) 18%,var(--panel))}
+.node text{font:500 15px var(--font);fill:var(--ink);text-anchor:middle}
+.badge{display:none}.node.m .bm,.node.s .bs{display:block}
+.badge text{font:600 11px var(--mono);fill:#fff}
+.edge{fill:none;stroke:var(--muted);stroke-width:1.4}
+.edge.dash{stroke-dasharray:7 5}
+
+.pages{display:flex;gap:6px;margin-top:12px}
+.pages a{font:500 14px var(--font);padding:7px 14px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);text-decoration:none}
+.pages a[aria-current="page"]{border-color:var(--sig);box-shadow:inset 0 -3px 0 var(--sig)}
+.view{display:flex;flex-direction:column;gap:14px}.view[hidden]{display:none}
+.split{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:20px;align-items:start}
+@media (max-width:900px){.split{grid-template-columns:minmax(0,1fr)}}
+.prose p{margin:0 0 10px;max-width:68ch}
+.prose h3{font:600 20px/1.2 var(--head);margin:0 0 8px}
+.prose ul{margin:0 0 10px;padding-left:18px;max-width:68ch}
+.ctl{display:flex;flex-wrap:wrap;gap:8px 18px;margin:0 0 10px;align-items:center}
+.ctl label{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--muted);min-width:120px}
+.ctl label b{font:500 12px var(--mono);color:var(--ink)}
+.ctl input[type=range]{width:100%;accent-color:var(--sig)}
+.read{font:500 13px var(--mono);margin:8px 0 0;color:var(--ink)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:10px}
+.card{border:1px solid var(--line);border-radius:6px;padding:10px 12px;background:var(--bg)}
+.card b{display:block;font:600 14px var(--head);margin-bottom:2px}
+.card small{color:var(--muted);font-size:12px;display:block}
+.flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px;margin:8px 0}
+.flow .box{flex:1 1 120px;border:1.5px solid var(--sig);border-radius:6px;padding:8px 10px;background:var(--bg);font-size:12px;min-width:0}
+.flow .box b{display:block;font-size:13px}
+.flow .arr{align-self:center;color:var(--muted);font-size:18px}
+.flow.rowb .box{border-color:var(--line)}
+table.map{border-collapse:collapse;width:100%;font-size:13px}
+table.map th,table.map td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+table.map th{font:600 12px var(--head);text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.tw{overflow-x:auto}
+.vids a{display:block;margin:4px 0;color:var(--sig)}
+#view-servos a{color:var(--sig)}
+
+.form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 12px}
+.form label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted);min-width:0}
+.form label[hidden]{display:none}.form label.wide{grid-column:1/-1}
+.form label.chk{flex-direction:row;align-items:center;gap:8px;color:var(--ink);font-size:13px;grid-column:1/-1}
+.form input[type=number],.form select{font:400 13px var(--mono);padding:6px 7px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:4px;width:100%}
+.szgrid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:20px;align-items:start}
+@media (max-width:900px){.szgrid{grid-template-columns:minmax(0,1fr)}}
+.verdict{padding:10px 12px;border-radius:6px;font-weight:500;margin-bottom:10px;border:1px solid var(--line)}
+.verdict.good{border-color:var(--ok);background:color-mix(in srgb,var(--ok) 14%,var(--panel))}
+.verdict.bad{border-color:var(--bad);background:color-mix(in srgb,var(--bad) 12%,var(--panel))}
+.cards.sum{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin:0 0 12px}
+.card .big{display:block;font:500 18px var(--mono);margin:2px 0}
+.card.cok{border-color:var(--ok)}.card.cno{border-color:var(--bad)}
+table.map td .yes{color:var(--ok);font-weight:700}table.map td .no{color:var(--bad);font-weight:700}
+#szTable tbody tr{cursor:pointer}#szTable tbody tr:hover{background:var(--bg)}
+#szTable tr.sel{background:color-mix(in srgb,var(--sig) 14%,var(--panel))}
+.tag{font:600 10px var(--mono);background:var(--ok);color:#fff;padding:1px 6px;border-radius:8px;margin-left:4px}
+#szSteps li{margin-bottom:6px}
+
+.mgrid{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:20px;align-items:start}
+@media (max-width:900px){.mgrid{grid-template-columns:minmax(0,1fr)}}
+.msvg{width:100%;height:320px;display:block;background:var(--bg);border:1px solid var(--line);border-radius:6px}
+.read .bad{color:var(--bad);font-weight:600}.read .good{color:var(--ok);font-weight:600}
+#view-mech .read{font:400 12.5px/1.7 var(--mono)}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>PLCopen Motion Lab</h1>
+    <p class="sub">Two simulated servo axes driven by PLCopen Motion Control function blocks. Watch the axis state machine, the block pins and the timing diagram react together, or change any block input yourself.</p>
+    <nav class="pages" aria-label="Pages"><a href="#lab" id="nav-lab">Simulator</a><a href="#servos" id="nav-servos">How servos work</a><a href="#sizing" id="nav-sizing">Sizing servos</a><a href="#mechanisms" id="nav-mech">Mechanisms</a></nav>
+  </header>
+  <div id="view-lab" class="view">
+  <nav class="tabs" id="scen" aria-label="Scenarios"></nav>
+  <div class="bar">
+    <button class="btn pri" id="play">Pause</button>
+    <button class="btn" id="restart">Restart scenario</button>
+    <label for="speed">Speed</label>
+    <select id="speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select>
+    <span class="clock" id="clock">t = 0.0 s</span>
+  </div>
+  <div class="grid">
+    <section class="panel motors"><h2>Servo axes</h2><canvas id="motors"></canvas></section>
+    <section class="panel state"><h2>Axis state machine</h2>
+      <svg id="sm" viewBox="0 0 920 590" role="img" aria-label="PLCopen axis state diagram"></svg>
+      <div class="legend"><span><i class="dot" style="background:var(--master)"></i>MyMaster</span><span><i class="dot" style="background:var(--slave)"></i>MySlave</span><span>Dashed: any state to ErrorStop on a drive error</span></div>
+    </section>
+    <section class="panel story"><h2>What is happening</h2><p id="say"></p><ol id="log" aria-label="Event log"></ol></section>
+    <section class="panel graph"><h2>Timing diagram</h2><canvas id="graph"></canvas>
+      <div class="chips" id="chips"><select id="addsig" aria-label="Add a signal to the diagram"></select></div>
+    </section>
+    <section class="panel fbs"><h2>Function blocks</h2><div id="fbs"></div>
+      <p class="note">Click a TRUE/FALSE button to change an input; edit numbers directly. Blocks react to the rising edge of Execute, as in the PLCopen specification. Motion profiles are trapezoidal, so Jerk is shown but not used. Units are degrees, °/s and °/s².</p>
+      <div class="errs" id="errs"></div>
+    </section>
+  </div>
+  </div>
+  <div id="view-servos" class="view" hidden>
+    <section class="panel">
+      <div class="split">
+        <div class="prose">
+          <h3>A servo is a motor inside a feedback loop</h3>
+          <p>A servo system measures what the motor is really doing and keeps correcting it. The motion controller (your PLC running the MC_ function blocks) sends a setpoint. The servo drive turns it into motor current, and an encoder on the motor reports the true position back.</p>
+          <p>Inside the drive, three control loops are nested. Each outer loop produces the setpoint for the loop inside it, so the inner loops must always be the fastest.</p>
+        </div>
+        <svg viewBox="0 0 900 270" role="img" aria-label="Cascaded position, velocity and current control loops" id="cascade"></svg>
+      </div>
+      <div class="cards">
+        <div class="card"><b>Position loop</b>Error in degrees becomes a velocity command (gain Kp).<small>Slowest loop. Typically tens of Hz of bandwidth.</small></div>
+        <div class="card"><b>Velocity loop</b>Speed error becomes a torque command (gain Kv, integral Ki).<small>Typically a few hundred Hz.</small></div>
+        <div class="card"><b>Current loop</b>Torque is proportional to motor current (T = Kt × I). Field-oriented control keeps the current at the right angle.<small>Fastest loop. Updates at the PWM rate, around 8 to 16 kHz or more.</small></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="split">
+        <div class="prose">
+          <h3>Tune the loops yourself</h3>
+          <p>The motor below follows a repeating 0° to 180° move. Raise the position gain Kp and the axis reacts faster, until it overshoots and rings. Add load inertia and the same gains become too aggressive, which is why drives need re-tuning when the machine changes.</p>
+          <ul>
+            <li>Kp too high for the velocity loop: overshoot and oscillation.</li>
+            <li>Kv too high: noisy, buzzing torque and instability.</li>
+            <li>Ki helps against steady load torque but can overshoot.</li>
+            <li>A trapezoid profile (what MC_MoveAbsolute plans) is far gentler than a step.</li>
+          </ul>
+          <div class="read" id="tuneRead">Waiting for first move…</div>
+        </div>
+        <div>
+          <div class="ctl">
+            <label>Position gain Kp <b id="v_kp"></b><input type="range" id="kp" min="1" max="60" step="1" value="12"></label>
+            <label>Velocity gain Kv <b id="v_kv"></b><input type="range" id="kv" min="10" max="500" step="5" value="120"></label>
+            <label>Velocity integral Ki <b id="v_ki"></b><input type="range" id="ki" min="0" max="200" step="5" value="20"></label>
+            <label>Load inertia ratio <b id="v_lo"></b><input type="range" id="lo" min="0" max="10" step="0.5" value="2"></label>
+            <label>Command <select id="cmd"><option value="trap">Trapezoid profile</option><option value="step">Step</option></select></label>
+            <button class="btn" id="kick" type="button">Hit with load torque</button>
+          </div>
+          <canvas id="tune"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="split">
+        <div class="prose">
+          <h3>Why a brushless servo motor spins</h3>
+          <p>The rotor carries permanent magnets. The stator has three windings, A, B and C, 120° apart. The drive feeds them three sine-shaped currents, 120° out of step, so the stator's magnetic field is a vector that rotates.</p>
+          <p>The drive keeps that field about 90° ahead of the rotor magnets, which gives the most torque per amp. Knowing the rotor angle for that is the main job of the encoder. This is commutation.</p>
+          <div class="ctl">
+            <label>Speed <b id="v_cs"></b><input type="range" id="cs" min="-120" max="120" step="5" value="45"></label>
+          </div>
+          <div class="read" id="phRead"></div>
+        </div>
+        <canvas id="commut"></canvas>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="split">
+        <div class="prose">
+          <h3>Feedback: the encoder</h3>
+          <p>An incremental encoder is a slotted disc between a light source and two sensors, A and B, placed a quarter slot apart. Each slot edge gives a count. Because A and B are shifted by 90°, the order of the edges tells the direction. Counting all four edges per slot is called x4 decoding.</p>
+          <p>A single index pulse (Z) once per turn gives a reference. Absolute and multi-turn encoders send the position as a number over a serial link, so no homing is needed after power-up. Resolvers are a rugged analogue alternative.</p>
+          <div class="ctl">
+            <label>Speed <b id="v_es"></b><input type="range" id="es" min="-200" max="200" step="5" value="40"></label>
+            <label>Slots per turn <select id="en"><option>24</option><option>48</option><option>100</option></select></label>
+          </div>
+          <div class="read" id="encRead"></div>
+        </div>
+        <canvas id="enc"></canvas>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Inside a servo drive</h2>
+      <div class="flow">
+        <div class="box"><b>Mains in</b>1- or 3-phase AC</div><span class="arr">→</span>
+        <div class="box"><b>Rectifier + DC bus</b>Capacitors store energy. A brake resistor burns regenerated energy when the motor decelerates.</div><span class="arr">→</span>
+        <div class="box"><b>Inverter</b>IGBT or MOSFET bridge switching at 8 to 16 kHz and more. Shapes three-phase currents by PWM.</div><span class="arr">→</span>
+        <div class="box"><b>Motor</b>Brushless synchronous motor. Optional holding brake and temperature sensor.</div>
+      </div>
+      <div class="flow rowb">
+        <div class="box"><b>Controller board</b>Runs position, velocity and current loops from encoder and current-sensor readings.</div>
+        <div class="box"><b>Command interface</b>Fieldbus (EtherCAT, CANopen, Profinet), pulse and direction, or ±10 V analogue.</div>
+        <div class="box"><b>Safety</b>STO (Safe Torque Off) removes the power to the motor without relying on software.</div>
+        <div class="box"><b>Operating modes</b>Torque, velocity or position. A drive can run the position loop itself or accept a setpoint from the controller every cycle.</div>
+      </div>
+      <div class="tw"><table class="map">
+        <caption style="text-align:left;font:600 13px var(--head);padding:12px 0 6px">How PLCopen function blocks usually relate to a CiA 402 drive (typical mapping, details differ per vendor)</caption>
+        <thead><tr><th>PLCopen</th><th>Drive side</th></tr></thead>
+        <tbody>
+          <tr><td>MC_Power</td><td>Walks the CiA 402 state machine up to "Operation enabled" and back to disabled.</td></tr>
+          <tr><td>ErrorStop, MC_Reset</td><td>"Fault reaction active", then "Fault". Reset sends the fault-reset bit.</td></tr>
+          <tr><td>MC_Home</td><td>Homing mode (mode 6), or a homing routine in the controller.</td></tr>
+          <tr><td>MC_MoveAbsolute, MC_MoveVelocity</td><td>Profile position or profile velocity modes, or the controller plans the profile and sends cyclic position setpoints (CSP).</td></tr>
+          <tr><td>MC_GearIn, MC_Phasing</td><td>Computed in the controller every cycle from the master position, then sent to the slave drive as cyclic setpoints.</td></tr>
+        </tbody></table></div>
+      <p class="note">See the same states and blocks running in the <a href="#lab">simulator</a>.</p>
+    </section>
+
+    <section class="panel">
+      <div class="split">
+        <div class="prose">
+          <h3>Torque and speed limits</h3>
+          <p>A motor has a continuous torque it can hold without overheating and a higher peak torque for short bursts such as acceleration. At high speed the back-EMF eats the available bus voltage, so both fall. Drag the operating point to see which zone a move lands in. The curves are an example, not a specific motor.</p>
+          <div class="ctl">
+            <label>Speed <b id="v_ts"></b><input type="range" id="ts" min="0" max="6000" step="100" value="2000"></label>
+            <label>Torque <b id="v_tt"></b><input type="range" id="tt" min="0" max="7" step="0.1" value="1.5"></label>
+          </div>
+          <div class="read" id="twRead"></div>
+        </div>
+        <canvas id="tw"></canvas>
+      </div>
+    </section>
+
+    <section class="panel vids">
+      <h2>Further watching</h2>
+      <p class="note" style="margin-top:0">These videos are linked for you to watch. I could not view them, so this page does not summarise them.</p>
+      <a href="https://www.youtube.com/watch?v=AQA6m6bF6Fs" target="_blank" rel="noopener">youtube.com/watch?v=AQA6m6bF6Fs</a>
+      <a href="https://www.youtube.com/watch?v=hg3TIFIxWCo" target="_blank" rel="noopener">youtube.com/watch?v=hg3TIFIxWCo</a>
+      <a href="https://www.youtube.com/watch?v=ditS0a28Sko" target="_blank" rel="noopener">youtube.com/watch?v=ditS0a28Sko</a>
+    </section>
+  </div>
+  <div id="view-sizing" class="view" hidden>
+    <section class="panel">
+      <div class="split">
+        <div class="prose">
+          <h3>Sizing a servo, step by step</h3>
+          <p>Sizing means proving that a motor and drive can deliver the torque, speed and inertia your machine needs, with some margin. The load decides the motor, not the other way round.</p>
+          <ol>
+            <li>Describe the mechanism: mass, screw pitch or pulley radius, gearbox, friction, gravity, process force.</li>
+            <li>Describe the move: distance, move time and cycle time. This sets speed and acceleration.</li>
+            <li>Reflect the load to the motor shaft: inertia, friction and gravity torque.</li>
+            <li>Find the torque in each phase: accelerate, cruise, decelerate, hold.</li>
+            <li>Check peak torque, RMS torque, maximum speed and inertia ratio against the motor data, with a margin.</li>
+            <li>Check the drive: peak current, regenerative energy and the position resolution you need.</li>
+          </ol>
+        </div>
+        <div class="cards" style="margin-top:0">
+          <div class="card"><b>Peak torque</b>Needed during acceleration and braking.<small>Keep 20 to 30 % below the motor's peak at that speed.</small></div>
+          <div class="card"><b>RMS torque</b>The heating effect of the whole cycle, including the time spent holding.<small>Must stay below the continuous rating.</small></div>
+          <div class="card"><b>Inertia ratio</b>Load inertia seen by the motor, divided by rotor inertia.<small>Often 5:1 or less for dynamic axes. A gearbox cuts it by the ratio squared.</small></div>
+          <div class="card"><b>Speed</b>Peak speed of the move, including the gear ratio.<small>Torque falls at high speed, so check the torque-speed curve.</small></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Sizing calculator</h2>
+      <div class="szgrid">
+        <div>
+          <div class="form">
+            <label class="wide">Mechanism<select id="szMech"><option value="screw">Ball screw (linear)</option><option value="belt">Belt and pulley (linear)</option><option value="rack">Rack and pinion (linear)</option><option value="rotary">Rotary table (direct)</option></select></label>
+            <label data-for="screw belt rack">Moving mass (kg)<input type="number" id="szMass" value="20" min="0" step="any"></label>
+            <label data-for="screw">Screw pitch (mm/rev)<input type="number" id="szPitch" value="10" min="0.1" step="any"></label>
+            <label data-for="belt rack" id="szRadL">Pulley radius (mm)<input type="number" id="szRad" value="30" min="1" step="any"></label>
+            <label id="szJxL">Screw and coupling inertia (kg·cm²)<input type="number" id="szJx" value="0.25" min="0" step="any"></label>
+            <label>Gear ratio (motor : load)<input type="number" id="szGear" value="1" min="1" step="any"></label>
+            <label>Efficiency (0 to 1)<input type="number" id="szEff" value="0.9" min="0.1" max="1" step="0.01"></label>
+            <label data-for="screw belt rack">Friction coefficient<input type="number" id="szMu" value="0.05" min="0" step="0.01"></label>
+            <label data-for="screw belt rack">Process force (N)<input type="number" id="szFext" value="0" min="0" step="any"></label>
+            <label data-for="rotary">Friction torque at load (N·m)<input type="number" id="szTf" value="0.3" min="0" step="any"></label>
+            <label data-for="screw belt rack" class="chk"><input type="checkbox" id="szVert"> Vertical axis (gravity)</label>
+            <label id="szDistL">Move distance (mm)<input type="number" id="szDist" value="200" min="0.001" step="any"></label>
+            <label>Move time (s)<input type="number" id="szT" value="0.5" min="0.01" step="any"></label>
+            <label>Cycle time (s)<input type="number" id="szCyc" value="1.5" min="0.01" step="any"></label>
+            <label>Safety margin<select id="szMargin"><option value="0.1">10 %</option><option value="0.25" selected>25 %</option><option value="0.4">40 %</option></select></label>
+            <label>Max inertia ratio<select id="szRatio"><option>3</option><option selected>5</option><option>10</option><option>20</option></select></label>
+            <label>Encoder resolution<select id="szBits"><option value="17">17 bit</option><option value="20" selected>20 bit</option><option value="23">23 bit</option></select></label>
+          </div>
+          <p class="note">Move profile: one third accelerating, one third at constant speed, one third braking. The mass moves one stroke per cycle and rests for the remaining time.</p>
+        </div>
+        <div>
+          <div class="verdict" id="szVerdict"></div>
+          <div class="cards sum" id="szCards"></div>
+          <canvas id="szProfile"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Candidate motors</h2>
+      <p class="note" style="margin-top:0">Generic example series with made-up round numbers, not a real product line. Click a row to see its limits in the charts below. Always use the data sheet of the motor you intend to buy.</p>
+      <div class="tw"><table class="map" id="szTable"></table></div>
+    </section>
+
+    <section class="panel">
+      <div class="split">
+        <div>
+          <h2>Torque and speed of the selected motor</h2>
+          <canvas id="szTS"></canvas>
+        </div>
+        <div class="prose">
+          <h3>How the numbers were calculated</h3>
+          <ol id="szSteps"></ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Things that catch people out</h2>
+      <div class="cards">
+        <div class="card"><b>Heavy loads on small motors</b>If the inertia ratio is high, the axis rings or needs soft tuning. A gearbox or a larger-inertia motor fixes it.<small>Try changing the gear ratio above and watch the motor list change.</small></div>
+        <div class="card"><b>Vertical axes</b>The motor holds the load against gravity even at rest, so RMS torque includes the dwell time. Use a holding brake.<small>Lowering the load returns energy to the drive.</small></div>
+        <div class="card"><b>Regeneration</b>Braking energy goes into the DC bus. Large inertia, fast stops or a falling load may need a brake resistor.<small>Compare the energy per stop with the drive's data sheet.</small></div>
+        <div class="card"><b>Duty and temperature</b>Continuous torque is rated at a given ambient temperature and mounting. A hot cabinet or small flange reduces it.<small>Leave real margin for this.</small></div>
+        <div class="card"><b>Mechanical stiffness</b>Backlash, belt stretch and coupling windup limit the gains you can use, whatever the motor size.<small>The calculator does not model them.</small></div>
+        <div class="card"><b>Drive current</b>The drive must supply the peak current for the peak torque, for as long as the move lasts.<small>Check its overload rating.</small></div>
+      </div>
+      <p class="note">This calculator is a simplified first estimate. For a real machine, confirm with the motor and drive manufacturers' sizing tools. Crank mechanisms have a changing ratio, see the <a href="#mechanisms">Mechanisms</a> page. The <a href="#servos">How servos work</a> page covers the loops and torque limits, and the <a href="#lab">simulator</a> shows the PLCopen blocks commanding such an axis.</p>
+    </section>
+  </div>
+  <div id="view-mech" class="view" hidden>
+    <section class="panel">
+      <div class="split">
+        <div class="prose">
+          <h3>Turning motor rotation into useful motion</h3>
+          <p>A servo motor gives rotation. A mechanism turns it into the motion the machine needs. Each one has a different <b>transmission ratio</b>, meaning how far the output moves for one radian of motor shaft. That ratio decides the force the motor can deliver and how much load inertia the motor feels.</p>
+          <p>A rack and pinion has a constant ratio. Crank mechanisms have a ratio that changes with the crank angle, so torque and reflected inertia peak at certain positions. Change the link lengths below and watch the curves.</p>
+        </div>
+        <div>
+          <div class="ctl">
+            <button class="btn pri" id="mPlay" type="button">Pause</button>
+            <label>Motor speed <b id="v_mRpm"></b><input type="range" id="mRpm" min="-60" max="60" step="1" value="15"></label>
+          </div>
+          <p class="note">Sliders change link lengths in millimetres. Where a crank cannot turn a full circle, the crank swings back and forth between its limits.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Rack and pinion</h2>
+      <div class="mgrid">
+        <div>
+          <svg id="rackSvg" class="msvg" viewBox="0 0 640 330" role="img" aria-label="Rack and pinion animation"></svg>
+          <div class="ctl" style="margin-top:10px">
+            <label>Pinion teeth (module 2 mm) <b id="v_rpN"></b><input type="range" id="rpN" min="10" max="48" step="1" value="24"></label>
+            <label>Thrust force <b id="v_rpF"></b><input type="range" id="rpF" min="0" max="3000" step="50" value="500"></label>
+            <label>Moving mass <b id="v_rpM"></b><input type="range" id="rpM" min="0.5" max="100" step="0.5" value="5"></label>
+          </div>
+        </div>
+        <div><canvas id="rackChart"></canvas><div class="read" id="rackRead"></div></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Crank and rocker (four-bar linkage)</h2>
+      <div class="mgrid">
+        <div>
+          <svg id="crSvg" class="msvg" viewBox="0 0 640 330" role="img" aria-label="Crank and rocker animation"></svg>
+          <div class="legend"><span><i class="dot" style="background:var(--master)"></i>crank a (input)</span><span><i class="dot" style="background:var(--slave)"></i>coupler b</span><span><i class="dot" style="background:var(--ok)"></i>rocker c (output)</span><span>dashed: coupler midpoint path</span></div>
+          <div class="ctl" style="margin-top:10px">
+            <label>Ground link g <b id="v_crG"></b><input type="range" id="crG" min="40" max="200" step="1" value="100"></label>
+            <label>Crank a <b id="v_crA"></b><input type="range" id="crA" min="10" max="120" step="1" value="30"></label>
+            <label>Coupler b <b id="v_crB"></b><input type="range" id="crB" min="30" max="200" step="1" value="90"></label>
+            <label>Rocker c <b id="v_crC"></b><input type="range" id="crC" min="30" max="200" step="1" value="70"></label>
+            <label>Load inertia on rocker <b id="v_crJ"></b><input type="range" id="crJ" min="1" max="500" step="1" value="50"></label>
+          </div>
+        </div>
+        <div><canvas id="crChart"></canvas><div class="read" id="crRead"></div></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Crank and slider</h2>
+      <div class="mgrid">
+        <div>
+          <svg id="csSvg" class="msvg" viewBox="0 0 640 330" role="img" aria-label="Crank and slider animation"></svg>
+          <div class="legend"><span><i class="dot" style="background:var(--master)"></i>crank r (input)</span><span><i class="dot" style="background:var(--slave)"></i>connecting rod L</span><span><i class="dot" style="background:var(--ok)"></i>slider (output)</span></div>
+          <div class="ctl" style="margin-top:10px">
+            <label>Crank radius r <b id="v_csR"></b><input type="range" id="csR" min="10" max="80" step="1" value="30"></label>
+            <label>Rod length L <b id="v_csL"></b><input type="range" id="csL" min="40" max="250" step="1" value="100"></label>
+            <label>Slider offset e <b id="v_csE"></b><input type="range" id="csE" min="-60" max="60" step="1" value="0"></label>
+            <label>Slider mass <b id="v_csM"></b><input type="range" id="csM" min="0.5" max="100" step="0.5" value="5"></label>
+          </div>
+        </div>
+        <div><canvas id="csChart"></canvas><div class="read" id="csRead"></div></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Which one for a servo axis</h2>
+      <div class="cards">
+        <div class="card"><b>Rack and pinion</b>Long strokes, constant ratio, easy to size. Backlash and tooth wear limit precision, so use a preloaded or helical pair for positioning.<small>Pinion radius is the ratio: torque = force × radius.</small></div>
+        <div class="card"><b>Crank and rocker</b>Gives an oscillating arc from continuous rotation. The motor can run at one speed while the rocker does a quick-return stroke.<small>Keep the minimum transmission angle above about 40°.</small></div>
+        <div class="card"><b>Crank and slider</b>Gives a reciprocating stroke, as in presses, pumps and packaging pushers. Stroke is about twice the crank radius, and an offset makes the strokes unequal.<small>Keep the rod at least 3 to 4 times the crank radius.</small></div>
+        <div class="card"><b>Sizing with a varying ratio</b>Use the worst case, which is the largest ratio for peak torque and the largest reflected inertia for the inertia ratio. Take the RMS torque over the whole cycle.<small>The <a href="#sizing">sizing page</a> includes a rack and pinion option.</small></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+(()=>{
+'use strict';
+const $=s=>document.querySelector(s);
+const DT=0.01, HLEN=2400, SAMPLE=2, WINDOW=30, ERR_DEC=720;
+
+/* ---------- definitions ---------- */
+const ERR={4001:'Axis is disabled',4002:'Axis is in ErrorStop, only MC_Reset is accepted',4003:'Axis is Stopping, command rejected',4004:'Master axis is not available',4005:'Axis is not synchronized',4006:'Axis is homing',4010:'Drive fault',4011:'Fault still present, cannot reset',4020:'Invalid parameter'};
+const DISP={Disabled:'Disabled',StandStill:'StandStill',Homing:'Homing',Discrete:'Discrete Motion',Continuous:'Continuous Motion',Synchronized:'Synchronized Motion',Stopping:'Stopping',ErrorStop:'ErrorStop'};
+const STATES=Object.keys(DISP);
+const SCOL={Disabled:'#7b8890',StandStill:'#5f7f95',Homing:'#8a6bc4',Discrete:'#2f6fd6',Continuous:'#16928c',Synchronized:'#2c9a4e',Stopping:'#d08a12',ErrorStop:'#cf3a3a'};
+const B='b',N='n';
+const PINS={
+ MC_Power:{in:[['Enable',B]],out:[['Status',B],['Error',B],['ErrorID',N]]},
+ MC_Reset:{in:[['Execute',B]],out:[['Done',B],['Busy',B],['Error',B],['ErrorID',N]]},
+ MC_Stop:{in:[['Execute',B],['Deceleration',N],['Jerk',N]],out:[['Done',B],['Busy',B],['Active',B],['CommandAborted',B],['Error',B],['ErrorID',N]]},
+ MC_Home:{in:[['Execute',B],['Position',N]],out:[['Done',B],['Busy',B],['Active',B],['CommandAborted',B],['Error',B],['ErrorID',N]]},
+ MC_MoveVelocity:{in:[['Execute',B],['Velocity',N],['Acceleration',N],['Deceleration',N],['Jerk',N]],out:[['InVelocity',B],['Busy',B],['Active',B],['CommandAborted',B],['Error',B],['ErrorID',N]]},
+ MC_MoveAbsolute:{in:[['Execute',B],['Position',N],['Velocity',N],['Acceleration',N],['Deceleration',N],['Jerk',N]],out:[['Done',B],['Busy',B],['Active',B],['CommandAborted',B],['Error',B],['ErrorID',N]]},
+ MC_GearIn:{in:[['Execute',B],['ContinuousUpdate',B],['RatioNumerator',N],['RatioDenominator',N],['Acceleration',N],['Deceleration',N],['Jerk',N]],out:[['InGear',B],['Busy',B],['Active',B],['CommandAborted',B],['Error',B],['ErrorID',N]]},
+ MC_GearOut:{in:[['Execute',B]],out:[['Done',B],['Busy',B],['CommandAborted',B],['Error',B],['ErrorID',N]]},
+ MC_Phasing:{in:[['Execute',B],['PhaseShift',N],['Velocity',N],['Acceleration',N],['Deceleration',N],['Jerk',N]],out:[['Done',B],['Busy',B],['Active',B],['CommandAborted',B],['Error',B],['ErrorID',N]]}
+};
+const DEF={Velocity:180,Acceleration:200,Deceleration:200,Jerk:1000,Position:360,RatioNumerator:1,RatioDenominator:1,PhaseShift:90};
+const FBS=[
+ {id:'Power_M',type:'MC_Power',ax:'M'},{id:'MoveVel_M',type:'MC_MoveVelocity',ax:'M'},{id:'Stop_M',type:'MC_Stop',ax:'M'},{id:'Reset_M',type:'MC_Reset',ax:'M'},{id:'Home_M',type:'MC_Home',ax:'M'},
+ {id:'Power_S',type:'MC_Power',ax:'S'},{id:'MoveAbs_A',type:'MC_MoveAbsolute',ax:'S'},{id:'MoveAbs_B',type:'MC_MoveAbsolute',ax:'S'},{id:'MoveVel_S',type:'MC_MoveVelocity',ax:'S'},
+ {id:'GearIn_First',label:'First',type:'MC_GearIn',ax:'S'},{id:'GearIn_Second',label:'Second',type:'MC_GearIn',ax:'S'},
+ {id:'GearOut_S',type:'MC_GearOut',ax:'S'},{id:'Phasing_S',type:'MC_Phasing',ax:'S'},{id:'Stop_S',type:'MC_Stop',ax:'S'},{id:'Reset_S',type:'MC_Reset',ax:'S'},{id:'Home_S',type:'MC_Home',ax:'S'}
+];
+const FBMAP={};FBS.forEach(f=>{f.label=f.label||f.id;FBMAP[f.id]=f});
+
+/* ---------- simulation state ---------- */
+let axes,simT,LOG,logDirty,EVENTS,hist;
+function mkAxis(key,name){return{key,name,pos:0,vel:0,state:'Disabled',cmd:null,fault:false,phTotal:0,ph:{active:false,fb:null,tgt:0,pos:0,vel:0,vmax:0,acc:0,dec:0}}}
+function resetAll(){
+  axes={M:mkAxis('M','MyMaster'),S:mkAxis('S','MySlave')};
+  simT=0;LOG=[];logDirty=true;EVENTS=[];
+  FBS.forEach(f=>{
+    f.in={};f.out={};f.hold={};f.prev=false;f.resetting=false;
+    PINS[f.type].in.forEach(([p,t])=>{f.in[p]=t===B?false:(f.type==='MC_Home'&&p==='Position'?0:(DEF[p]??0))});
+    PINS[f.type].out.forEach(([p])=>{f.out[p]=p==='ErrorID'?0:false});
+  });
+  hist={n:0,head:0,t:new Float64Array(HLEN),v:{}};
+  SIGS.forEach(s=>hist.v[s.id]=new Float32Array(HLEN));
+}
+function log(a,msg){LOG.unshift({t:simT,ax:a?a.key:'F',msg});if(LOG.length>60)LOG.pop();logDirty=true}
+function setState(a,s,why){
+  if(a.state===s)return;
+  if(s==='Synchronized')a.phTotal=0;
+  log(a,`${a.name}: ${DISP[a.state]} → ${DISP[s]}${why?'  ('+why+')':''}`);
+  a.state=s;
+}
+function slew(v,t,acc,dec){const dv=t-v;const lim=(v===0||dv*v>0)?acc:dec;const s=lim*DT;return v+Math.max(-s,Math.min(s,dv))}
+function flag(f,k){f.out[k]=true;f.hold[k]=0.35}
+function fail(f,id){const O=f.out;O.Error=true;O.ErrorID=id;if('Busy' in O)O.Busy=false;if('Active' in O)O.Active=false;f.hold.Error=0.35;log(axes[f.ax],`${f.label}: Error ${id}, ${ERR[id]}`)}
+function abortPhase(a,byFb){const p=a.ph;if(p.active&&p.fb!==byFb){p.fb.out.Busy=false;p.fb.out.Active=false;flag(p.fb,'CommandAborted')}p.active=false;p.vel=0}
+function abortCmd(a,byFb){
+  const c=a.cmd;
+  if(c&&c.fb!==byFb){const o=c.fb.out;o.Busy=false;o.Active=false;if('InGear' in o)o.InGear=false;if('InVelocity' in o)o.InVelocity=false;flag(c.fb,'CommandAborted');log(a,`${c.fb.label} aborted`)}
+  if(c&&c.kind==='gear')abortPhase(a,byFb);
+  a.cmd=null;
+}
+function injectFault(a){
+  if(a.state==='Disabled'){a.fault=true;return}
+  a.fault=true;
+  if(a.cmd){fail(a.cmd.fb,4010);if(a.cmd.kind==='gear'&&a.ph.active)fail(a.ph.fb,4010)}
+  a.ph.active=false;a.ph.vel=0;a.cmd=null;
+  log(a,`${a.name}: drive fault`);
+  setState(a,'ErrorStop','fault');
+}
+
+/* ---------- function block behaviour ---------- */
+function clearOut(f){const O=f.out;for(const k of ['Done','InVelocity','Error','CommandAborted'])if(k in O)O[k]=false;O.ErrorID=0;for(const k in f.hold)f.hold[k]=0}
+function start(f){
+  const a=axes[f.ax],I=f.in,O=f.out,t=f.type;
+  clearOut(f);
+  EVENTS.push({t:simT});
+  if(t==='MC_Reset'){O.Busy=true;f.resetting=true;return}
+  if(a.state==='Disabled')return fail(f,4001);
+  if(a.state==='ErrorStop')return fail(f,4002);
+  if(a.state==='Stopping'&&t!=='MC_Stop')return fail(f,4003);
+  if(a.state==='Homing'&&t!=='MC_Stop')return fail(f,4006);
+  const why=t;
+  if(t==='MC_MoveAbsolute'){
+    if(I.Velocity<=0||I.Acceleration<=0||I.Deceleration<=0)return fail(f,4020);
+    abortCmd(a,f);a.cmd={kind:'abs',fb:f,pos:I.Position,vel:I.Velocity,acc:I.Acceleration,dec:I.Deceleration};setState(a,'Discrete',why);
+  }else if(t==='MC_MoveVelocity'){
+    if(I.Acceleration<=0||I.Deceleration<=0)return fail(f,4020);
+    abortCmd(a,f);a.cmd={kind:'vel',fb:f,vel:I.Velocity,acc:I.Acceleration,dec:I.Deceleration,reached:false};setState(a,'Continuous',why);
+  }else if(t==='MC_GearIn'){
+    const ms=axes.M.state;
+    if(ms==='Disabled'||ms==='ErrorStop')return fail(f,4004);
+    if(!I.RatioDenominator||I.Acceleration<=0||I.Deceleration<=0)return fail(f,4020);
+    abortCmd(a,f);a.cmd={kind:'gear',fb:f,num:I.RatioNumerator,den:I.RatioDenominator,acc:I.Acceleration,dec:I.Deceleration,gv:a.vel,sync:false};setState(a,'Synchronized',why);
+  }else if(t==='MC_GearOut'){
+    if(a.state!=='Synchronized')return fail(f,4005);
+    abortCmd(a,f);setState(a,'Continuous',why);flag(f,'Done');return;
+  }else if(t==='MC_Phasing'){
+    if(a.state!=='Synchronized')return fail(f,4005);
+    if(I.Velocity<=0||I.Acceleration<=0||I.Deceleration<=0)return fail(f,4020);
+    abortPhase(a,f);const p=a.ph;p.active=true;p.fb=f;p.tgt=I.PhaseShift;p.pos=0;p.vmax=I.Velocity;p.acc=I.Acceleration;p.dec=I.Deceleration;
+  }else if(t==='MC_Stop'){
+    if(I.Deceleration<=0)return fail(f,4020);
+    abortCmd(a,f);a.cmd={kind:'stop',fb:f,dec:I.Deceleration,done:false};setState(a,'Stopping',why);
+  }else if(t==='MC_Home'){
+    abortCmd(a,f);a.cmd={kind:'abs',fb:f,pos:I.Position,vel:90,acc:300,dec:300,home:true};setState(a,'Homing',why);
+  }
+  if('Busy' in O)O.Busy=true;
+  if('Active' in O)O.Active=true;
+}
+function stepFB(f){
+  const a=axes[f.ax],I=f.in,O=f.out;
+  if(f.type==='MC_Power'){
+    const en=I.Enable;
+    if(en&&!f.prev){EVENTS.push({t:simT});if(a.state==='Disabled'){setState(a,a.fault?'ErrorStop':'StandStill','MC_Power');}O.Status=true}
+    if(!en&&f.prev){EVENTS.push({t:simT});abortCmd(a);a.ph.active=false;setState(a,'Disabled','MC_Power');O.Status=false}
+    f.prev=en;return;
+  }
+  const rise=I.Execute&&!f.prev;f.prev=I.Execute;
+  if(rise)start(f);
+  if(f.resetting){
+    if(a.state!=='ErrorStop'){f.resetting=false;O.Busy=false;flag(f,'Done')}
+    else if(a.fault){f.resetting=false;O.Busy=false;fail(f,4011)}
+    else if(Math.abs(a.vel)<0.5){a.vel=0;f.resetting=false;O.Busy=false;setState(a,'StandStill','MC_Reset');flag(f,'Done')}
+  }
+  for(const k of ['Done','InVelocity','Error','CommandAborted']){
+    if(k in O&&O[k]){
+      if(f.hold[k]>0)f.hold[k]-=DT;
+      else if(!I.Execute){O[k]=false;if(k==='Error')O.ErrorID=0}
+    }
+  }
+}
+
+/* ---------- axis motion ---------- */
+function stepAxis(a){
+  const c=a.cmd;
+  if(a.state==='Disabled'||a.state==='ErrorStop'){a.vel=slew(a.vel,0,ERR_DEC,ERR_DEC);a.pos+=a.vel*DT;return}
+  if(!c){if(a.state==='StandStill')a.vel=0;a.pos+=a.vel*DT;return}
+  const f=c.fb,O=f.out;
+  switch(c.kind){
+    case'abs':{
+      const rem=c.pos-a.pos,dir=Math.sign(rem);
+      const vd=dir*Math.min(c.vel,Math.sqrt(2*c.dec*Math.abs(rem)));
+      a.vel=slew(a.vel,vd,c.acc,c.dec);a.pos+=a.vel*DT;
+      if(Math.abs(c.pos-a.pos)<=Math.abs(a.vel)*DT*1.5+0.02&&Math.abs(a.vel)<6){
+        a.pos=c.pos;a.vel=0;a.cmd=null;O.Busy=false;O.Active=false;flag(f,'Done');setState(a,'StandStill',c.home?'MC_Home done':'target reached');
+      }
+      return}
+    case'vel':
+      a.vel=slew(a.vel,c.vel,c.acc,c.dec);
+      if(!c.reached&&Math.abs(a.vel-c.vel)<1e-6){c.reached=true;O.Busy=false;flag(f,'InVelocity')}
+      break;
+    case'gear':{
+      const I=f.in;
+      if(I.ContinuousUpdate&&I.RatioDenominator&&(c.num!==I.RatioNumerator||c.den!==I.RatioDenominator)){
+        c.num=I.RatioNumerator;c.den=I.RatioDenominator;
+        if(c.sync){c.sync=false;O.InGear=false;O.Busy=true}
+      }
+      const tv=c.num/c.den*axes.M.vel;
+      if(!c.sync){
+        c.gv=slew(c.gv,tv,c.acc,c.dec);
+        if(Math.abs(c.gv-tv)<1e-6){c.sync=true;c.gv=tv;O.InGear=true;O.Busy=false;log(a,`${f.label}: ratio ${c.num}:${c.den} reached, InGear`)}
+      }else c.gv=tv;
+      const p=a.ph;
+      if(p.active){
+        const rem=p.tgt-p.pos,vd=Math.sign(rem)*Math.min(p.vmax,Math.sqrt(2*p.dec*Math.abs(rem)));
+        p.vel=slew(p.vel,vd,p.acc,p.dec);p.pos+=p.vel*DT;a.phTotal+=p.vel*DT;
+        if(Math.abs(p.tgt-p.pos)<=Math.abs(p.vel)*DT*1.5+0.02&&Math.abs(p.vel)<6){
+          a.phTotal+=p.tgt-p.pos;p.pos=p.tgt;p.vel=0;p.active=false;
+          p.fb.out.Busy=false;p.fb.out.Active=false;flag(p.fb,'Done');log(a,`${p.fb.label}: phase shift done`);
+        }
+      }
+      a.vel=c.gv+p.vel;
+      break}
+    case'stop':
+      a.vel=slew(a.vel,0,c.dec,c.dec);
+      if(!c.done&&Math.abs(a.vel)<1e-3){a.vel=0;c.done=true;flag(f,'Done');O.Busy=false}
+      if(c.done&&!f.in.Execute){a.cmd=null;O.Active=false;a.pos+=a.vel*DT;setState(a,'StandStill','stop complete, Execute FALSE');return}
+      break;
+  }
+  a.pos+=a.vel*DT;
+}
+
+function tick(){
+  runScript();
+  simT+=DT;
+  FBS.forEach(stepFB);
+  stepAxis(axes.M);stepAxis(axes.S);
+  if(Math.round(simT/DT)%SAMPLE===0)sample();
+}
+
+/* ---------- signals & history ---------- */
+const SIGS=[];
+function addSig(id,label,kind,get,group){SIGS.push({id,label,kind,get,group})}
+['M','S'].forEach(k=>{
+  const nm=k==='M'?'MyMaster':'MySlave';
+  addSig(`${k}.State`,`${nm}.State`,'s',()=>STATES.indexOf(axes[k].state),nm);
+  addSig(`${k}.Velocity`,`${nm}.Velocity`,'a',()=>axes[k].vel,nm);
+  addSig(`${k}.Position`,`${nm}.Position`,'a',()=>axes[k].pos,nm);
+});
+addSig('S.PhaseShift','MySlave.PhaseShift','a',()=>axes.S.phTotal,'MySlave');
+FBS.forEach(f=>{
+  const d=PINS[f.type];
+  [...d.in.map(p=>[p,'in']),...d.out.map(p=>[p,'out'])].forEach(([[p,t],side])=>{
+    if(t===B)addSig(`${f.id}.${p}`,`${f.label}.${p}`,'d',()=>f[side][p]?1:0,f.label);
+  });
+});
+const SIGMAP={};SIGS.forEach(s=>SIGMAP[s.id]=s);
+function sample(){
+  const h=hist;h.t[h.head]=simT;
+  for(const s of SIGS)h.v[s.id][h.head]=s.get();
+  h.head=(h.head+1)%HLEN;if(h.n<HLEN)h.n++;
+}
+
+/* ---------- scenarios ---------- */
+let steps=[],stepIdx=0,scen=null,say='',finished=false;
+const set=(id,o)=>Object.assign(FBMAP[id].in,o);
+const S=(t,text,fn)=>({t,text,fn});
+const ex=(id,v)=>()=>{FBMAP[id].in.Execute=v};
+const both=(...fns)=>()=>fns.forEach(f=>f());
+const SCEN={
+ gear:{title:'GearIn',blurb:'Figure 43: First, then Second',duration:32,
+  signals:['GearIn_First.Execute','GearIn_First.InGear','GearIn_Second.Execute','GearIn_Second.InGear','M.Velocity','S.Velocity','S.State'],
+  setup(){set('MoveVel_M',{Velocity:180,Acceleration:120,Deceleration:120});set('GearIn_First',{RatioNumerator:1,RatioDenominator:1,Acceleration:120,Deceleration:120});set('GearIn_Second',{RatioNumerator:2,RatioDenominator:1,Acceleration:120,Deceleration:120});set('Stop_M',{Deceleration:120});set('Stop_S',{Deceleration:240})},
+  steps:[
+   S(0.5,'MC_Power on both axes. Status turns TRUE and each axis goes from Disabled to StandStill.',both(()=>set('Power_M',{Enable:true}),()=>set('Power_S',{Enable:true}))),
+   S(2,'The master axis runs with MC_MoveVelocity at 180°/s: StandStill to Continuous Motion.',ex('MoveVel_M',true)),
+   S(4,'First (MC_GearIn, ratio 1:1) starts. The slave is StandStill, so it enters Synchronized Motion and accelerates toward the master speed.',ex('GearIn_First',true)),
+   S(9,'First.Execute goes FALSE. The gear stays active, so InGear stays TRUE.',ex('GearIn_First',false)),
+   S(12,'Second (MC_GearIn, ratio 2:1) starts. First is aborted (CommandAborted pulses, InGear drops) and the slave speeds up to twice the master speed.',ex('GearIn_Second',true)),
+   S(19,'Second.Execute goes FALSE. The slave keeps its 2:1 coupling.',ex('GearIn_Second',false)),
+   S(21,'The master slows to 90°/s. The slave stays in gear and follows at 180°/s.',both(()=>set('MoveVel_M',{Execute:false}),()=>{})),
+   S(21.3,'',both(()=>set('MoveVel_M',{Velocity:90}),()=>{})),
+   S(21.6,'',ex('MoveVel_M',true)),
+   S(26,'MC_Stop on the slave. It leaves Synchronized Motion, decelerates and returns to StandStill.',ex('Stop_S',true)),
+   S(28.5,'MC_Stop on the master.',ex('Stop_M',true)),
+   S(31.5,'Done. Press Restart to run again, or switch Execute inputs yourself.',both(ex('Stop_S',false),ex('Stop_M',false)))
+  ]},
+ power:{title:'Power, velocity, stop',blurb:'StandStill, Discrete, Continuous, Stopping',duration:25,
+  signals:['M.State','M.Velocity','MoveVel_M.Execute','MoveVel_M.InVelocity','S.State','S.Position','MoveAbs_A.Execute','MoveAbs_A.Done'],
+  setup(){set('MoveVel_M',{Velocity:180,Acceleration:90,Deceleration:90});set('MoveAbs_A',{Position:720,Velocity:240,Acceleration:240,Deceleration:240});set('MoveVel_S',{Velocity:-120,Acceleration:120,Deceleration:120});set('Stop_M',{Deceleration:90});set('Stop_S',{Deceleration:240})},
+  steps:[
+   S(0.5,'Enable both axes with MC_Power. Both move from Disabled to StandStill.',both(()=>set('Power_M',{Enable:true}),()=>set('Power_S',{Enable:true}))),
+   S(2,'MC_MoveVelocity on the master: StandStill to Continuous Motion. InVelocity is set once 180°/s is reached.',ex('MoveVel_M',true)),
+   S(3.5,'MC_MoveAbsolute on the slave: StandStill to Discrete Motion. It accelerates, cruises, brakes and sets Done at 720°.',ex('MoveAbs_A',true)),
+   S(8.5,'Done reached. Execute goes FALSE, which resets Done.',ex('MoveAbs_A',false)),
+   S(10,'MC_MoveVelocity on the slave at −120°/s from StandStill: Continuous Motion, backwards.',ex('MoveVel_S',true)),
+   S(14,'MC_Stop on the master: Continuous Motion to Stopping. MoveVelocity is aborted. While Stop.Execute stays TRUE the axis remains in Stopping.',ex('Stop_M',true)),
+   S(16.5,'MoveVelocity is retriggered while the axis is still in Stopping. The block reports Error 4003.',both(ex('MoveVel_M',false),()=>{})),
+   S(16.8,'',ex('MoveVel_M',true)),
+   S(18.5,'Stop.Execute goes FALSE: Done and Execute FALSE let the axis return to StandStill.',both(ex('Stop_M',false),ex('MoveVel_M',false))),
+   S(19.5,'MoveVelocity is accepted again: StandStill to Continuous Motion.',ex('MoveVel_M',true)),
+   S(21,'MC_Stop on the slave ends its backwards run.',ex('Stop_S',true)),
+   S(24,'Done. Press Restart or try the inputs yourself.',both(ex('Stop_S',false),ex('MoveVel_S',false),ex('Stop_M',true)))
+  ]},
+ move:{title:'Positioning & interrupts',blurb:'Aborting commands',duration:24,
+  signals:['S.State','S.Position','S.Velocity','MoveAbs_A.Execute','MoveAbs_A.Done','MoveAbs_A.CommandAborted','MoveAbs_B.Execute','MoveAbs_B.Done','MoveVel_S.Execute'],
+  setup(){set('MoveAbs_A',{Position:540,Velocity:180,Acceleration:180,Deceleration:180});set('MoveAbs_B',{Position:90,Velocity:300,Acceleration:300,Deceleration:300});set('MoveVel_S',{Velocity:120,Acceleration:150,Deceleration:150});set('Stop_S',{Deceleration:200})},
+  steps:[
+   S(0.5,'Enable the axis.',()=>set('Power_S',{Enable:true})),
+   S(1.5,'MoveAbsolute A: go to 540°. StandStill to Discrete Motion.',ex('MoveAbs_A',true)),
+   S(3.5,'MoveAbsolute B (target 90°) starts while A is still running. A is aborted with CommandAborted and the axis reverses.',ex('MoveAbs_B',true)),
+   S(5.2,'MoveVelocity during a positioning move: Discrete Motion to Continuous Motion. B is aborted.',ex('MoveVel_S',true)),
+   S(7,'Clear A and B Execute inputs.',both(ex('MoveAbs_A',false),ex('MoveAbs_B',false))),
+   S(10,'MoveAbsolute A again while the axis is in Continuous Motion: back to Discrete Motion, ending at 540°.',both(ex('MoveVel_S',false),ex('MoveAbs_A',true))),
+   S(17,'Target reached, Done is set.',()=>{}),
+   S(18,'Execute FALSE resets Done. MC_Stop ends the demo.',both(ex('MoveAbs_A',false),ex('Stop_S',true))),
+   S(21,'Done. Press Restart or experiment.',ex('Stop_S',false))
+  ]},
+ phase:{title:'GearOut & Phasing',blurb:'Superimposed shifts, leaving the gear',duration:30,
+  signals:['M.Velocity','S.Velocity','S.PhaseShift','S.State','Phasing_S.Execute','Phasing_S.Done','GearOut_S.Execute','GearOut_S.Done'],
+  setup(){set('MoveVel_M',{Velocity:120,Acceleration:120,Deceleration:120});set('GearIn_First',{RatioNumerator:1,RatioDenominator:1,Acceleration:240,Deceleration:240});set('Phasing_S',{PhaseShift:90,Velocity:60,Acceleration:120,Deceleration:120});set('Stop_S',{Deceleration:240});set('Stop_M',{Deceleration:240})},
+  steps:[
+   S(0.5,'Enable both axes.',both(()=>set('Power_M',{Enable:true}),()=>set('Power_S',{Enable:true}))),
+   S(1.5,'Master runs at 120°/s.',ex('MoveVel_M',true)),
+   S(3.5,'MC_GearIn 1:1: the slave synchronizes with the master.',ex('GearIn_First',true)),
+   S(8,'MC_Phasing adds a +90° shift at 60°/s on top of the gear. The slave stays in Synchronized Motion and temporarily runs faster than the master.',both(ex('GearIn_First',false),ex('Phasing_S',true))),
+   S(12,'Done is set once the 90° shift is complete.',ex('Phasing_S',false)),
+   S(13,'A second phase shift of +180°.',both(()=>set('Phasing_S',{PhaseShift:180}),()=>{})),
+   S(13.3,'',ex('Phasing_S',true)),
+   S(19,'',ex('Phasing_S',false)),
+   S(20,'MC_GearOut: the slave leaves the gear and keeps its current velocity. Synchronized Motion to Continuous Motion. First reports CommandAborted.',ex('GearOut_S',true)),
+   S(22,'',ex('GearOut_S',false)),
+   S(23,'MC_Stop on the slave: Continuous Motion to Stopping to StandStill.',ex('Stop_S',true)),
+   S(25.5,'MC_Stop on the master.',both(ex('Stop_S',false),ex('Stop_M',true))),
+   S(28.5,'Done.',ex('Stop_M',false))
+  ]},
+ fault:{title:'ErrorStop & Reset',blurb:'Drive fault recovery',duration:26,
+  signals:['S.State','S.Velocity','MoveVel_S.Execute','MoveVel_S.Error','MoveAbs_A.Execute','MoveAbs_A.Error','Reset_S.Execute','Reset_S.Done','Reset_S.Error'],
+  setup(){set('MoveVel_S',{Velocity:240,Acceleration:240,Deceleration:240});set('MoveAbs_A',{Position:90,Velocity:180,Acceleration:240,Deceleration:240})},
+  steps:[
+   S(0.5,'Enable the slave axis.',()=>set('Power_S',{Enable:true})),
+   S(1.5,'MoveVelocity at 240°/s.',ex('MoveVel_S',true)),
+   S(4.5,'A drive fault occurs. Any enabled state moves to ErrorStop. MoveVelocity reports Error 4010 and the axis brakes at 720°/s².',()=>injectFault(axes.S)),
+   S(7.5,'In ErrorStop only MC_Reset is accepted. MoveAbsolute is rejected with Error 4002.',both(ex('MoveVel_S',false),ex('MoveAbs_A',true))),
+   S(9.5,'MC_Reset while the fault is still present: Error 4011. The axis stays in ErrorStop.',both(ex('MoveAbs_A',false),ex('Reset_S',true))),
+   S(12,'',ex('Reset_S',false)),
+   S(13,'The fault condition is removed, for example the drive is repaired.',()=>{axes.S.fault=false;log(axes.S,'fault condition cleared')}),
+   S(14.5,'MC_Reset again: Done is set and the axis returns to StandStill.',ex('Reset_S',true)),
+   S(17,'',ex('Reset_S',false)),
+   S(18,'The axis accepts motion again: MoveAbsolute to 90°.',ex('MoveAbs_A',true)),
+   S(22,'Done.',ex('MoveAbs_A',false))
+  ]},
+ sandbox:{title:'Sandbox',blurb:'Drive the blocks yourself',duration:0,
+  signals:['M.State','S.State','M.Velocity','S.Velocity'],
+  setup(){},
+  steps:[S(0,'Free play. Enable the axes with the Power blocks, then toggle Execute inputs below. Try MC_Home on either axis (Homing state), a GearIn on the slave while the master is moving, or inject a drive fault.',()=>{})]}
+};
+function runScript(){
+  while(stepIdx<steps.length&&steps[stepIdx].t<=simT+1e-9){
+    const s=steps[stepIdx++];s.fn();if(s.text){say=s.text;$('#say').textContent=say}
+  }
+  if(scen&&scen.duration&&!finished&&simT>=scen.duration){finished=true;setPlaying(false)}
+}
+
+/* ---------- selected signals ---------- */
+let selected=[];
+function setSelected(ids){selected=ids.slice();renderChips()}
+function renderChips(){
+  const box=$('#chips');box.querySelectorAll('.chip').forEach(e=>e.remove());
+  const sel=$('#addsig');
+  selected.forEach(id=>{
+    const c=document.createElement('span');c.className='chip';c.textContent=SIGMAP[id].label;
+    const b=document.createElement('button');b.type='button';b.textContent='×';b.setAttribute('aria-label','Remove '+SIGMAP[id].label);
+    b.onclick=()=>{selected=selected.filter(x=>x!==id);renderChips()};
+    c.appendChild(b);box.insertBefore(c,sel);
+  });
+}
+function buildAddSel(){
+  const sel=$('#addsig');sel.innerHTML='<option value="">+ Add signal…</option>';
+  const groups={};SIGS.forEach(s=>{(groups[s.group]=groups[s.group]||[]).push(s)});
+  for(const g in groups){const og=document.createElement('optgroup');og.label=g;groups[g].forEach(s=>{const o=document.createElement('option');o.value=s.id;o.textContent=s.label;og.appendChild(o)});sel.appendChild(og)}
+  sel.onchange=()=>{if(sel.value&&!selected.includes(sel.value)){selected.push(sel.value);renderChips()}sel.value=''};
+}
+
+/* ---------- drawing helpers ---------- */
+const cv=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function fit(c,h){
+  const dpr=Math.min(window.devicePixelRatio||1,2),w=c.clientWidth;
+  if(c.width!==Math.round(w*dpr)||c.height!==Math.round(h*dpr)){c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);c.style.height=h+'px'}
+  const g=c.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);return[g,w,h];
+}
+function niceRange(lo,hi){
+  lo=Math.min(lo,0);hi=Math.max(hi,0);
+  let span=Math.max(hi-lo,60);const step=[50,100,200,250,500,1000,2000,5000,10000].find(s=>span/s<=4)||20000;
+  return[Math.floor(lo/step)*step,Math.ceil(hi/step)*step||step];
+}
+
+/* graph */
+function drawGraph(){
+  const c=$('#graph'),lanes=selected.map(id=>SIGMAP[id]);
+  const LH={d:44,a:80,s:30},top=14,bot=26,left=Math.min(150,c.clientWidth*0.3),right=14;
+  const H=top+bot+lanes.reduce((n,s)=>n+LH[s.kind]+8,0)+4;
+  const[g,W]=fit(c,Math.max(H,120));
+  g.clearRect(0,0,W,H);
+  const ink=cv('--ink'),muted=cv('--muted'),grid=cv('--grid'),sig=cv('--sig');
+  const t1=simT,t0=t1-WINDOW,pw=W-left-right,X=t=>left+(t-t0)/WINDOW*pw;
+  g.font='11px '+getComputedStyle(document.body).getPropertyValue('--mono');
+  // event markers
+  g.setLineDash([2,4]);g.strokeStyle=muted;g.lineWidth=1;g.globalAlpha=.6;
+  EVENTS.forEach(e=>{if(e.t>=t0&&e.t<=t1){g.beginPath();g.moveTo(X(e.t),top-4);g.lineTo(X(e.t),H-bot);g.stroke()}});
+  g.setLineDash([]);g.globalAlpha=1;
+  const h=hist,n=h.n,per=SAMPLE*DT;
+  const kStart=Math.max(0,n-Math.ceil(WINDOW/per)-2);
+  const idx=k=>(h.head-n+k+HLEN*2)%HLEN;
+  let y=top;
+  lanes.forEach(s=>{
+    const lh=LH[s.kind],v=h.v[s.id];
+    g.textAlign='right';g.textBaseline='middle';g.fillStyle=ink;
+    const lbl=s.label.length>22?s.label.slice(0,21)+'…':s.label;
+    g.fillText(lbl,left-34,y+lh/2);
+    if(s.kind==='s'){
+      let k0=kStart;
+      for(let k=kStart;k<=n;k++){
+        const cur=k<n?v[idx(k)]:-1,first=v[idx(k0)];
+        if(k===n||cur!==first){
+          const ta=h.t[idx(k0)],tb=k<n?h.t[idx(k)]:t1;
+          const xa=Math.max(left,X(ta)),xb=Math.min(left+pw,X(tb));
+          if(xb>xa){g.fillStyle=SCOL[STATES[first]];g.fillRect(xa,y+2,xb-xa,lh-4);
+            if(xb-xa>g.measureText(DISP[STATES[first]]).width+10){g.fillStyle='#fff';g.textAlign='center';g.fillText(DISP[STATES[first]],(xa+xb)/2,y+lh/2)}}
+          k0=k;
+        }
+      }
+    }else{
+      let lo=0,hi=1;
+      if(s.kind==='a'){let mn=1e9,mx=-1e9;for(let k=kStart;k<n;k++){const x=v[idx(k)];if(x<mn)mn=x;if(x>mx)mx=x}if(n)[lo,hi]=niceRange(mn,mx)}
+      const pad=s.kind==='a'?6:6,yy=val=>y+lh-pad-(val-lo)/(hi-lo)*(lh-2*pad);
+      g.strokeStyle=grid;g.lineWidth=1;g.beginPath();g.moveTo(left,yy(0));g.lineTo(left+pw,yy(0));g.stroke();
+      g.fillStyle=muted;g.textAlign='right';
+      if(s.kind==='d'){g.fillText('1',left-6,yy(1));g.fillText('0',left-6,yy(0))}
+      else{g.fillText(String(hi),left-6,yy(hi));if(lo<0)g.fillText(String(lo),left-6,yy(lo));g.fillText('0',left-6,yy(0))}
+      g.strokeStyle=sig;g.lineWidth=2.4;g.lineJoin='round';g.beginPath();
+      let started=false,prev=0;
+      for(let k=kStart;k<n;k++){
+        const x=X(h.t[idx(k)]);if(x<left)continue;
+        const val=v[idx(k)];
+        if(!started){g.moveTo(x,yy(val));started=true}
+        else if(s.kind==='d'){g.lineTo(x,yy(prev));g.lineTo(x,yy(val))}
+        else g.lineTo(x,yy(val));
+        prev=val;
+      }
+      g.stroke();
+    }
+    y+=lh+8;
+  });
+  // time axis
+  g.fillStyle=muted;g.textAlign='center';g.textBaseline='top';g.strokeStyle=muted;g.lineWidth=1;
+  g.beginPath();g.moveTo(left,H-bot+4);g.lineTo(left+pw,H-bot+4);g.stroke();
+  for(let t=Math.ceil(t0/5)*5;t<=t1;t+=5){if(t<0)continue;const x=X(t);g.beginPath();g.moveTo(x,H-bot+4);g.lineTo(x,H-bot+9);g.stroke();g.fillText(t+' s',x,H-bot+11)}
+}
+
+/* motors */
+function gearPath(g,r,teeth,depth){
+  g.beginPath();
+  for(let i=0;i<teeth;i++){
+    const a=i/teeth*Math.PI*2,w=Math.PI*2/teeth;
+    const p=[[a,r-depth],[a+w*.18,r],[a+w*.5,r],[a+w*.68,r-depth]];
+    p.forEach(([an,rr],j)=>{const x=Math.cos(an)*rr,y=Math.sin(an)*rr;(i===0&&j===0)?g.moveTo(x,y):g.lineTo(x,y)});
+  }
+  g.closePath();
+}
+function drawAxis(g,x0,y0,w,h,a,col){
+  const ink=cv('--ink'),muted=cv('--muted'),panel=cv('--panel'),line=cv('--line');
+  g.textBaseline='alphabetic';
+  g.fillStyle=col;g.fillRect(x0,y0+4,4,18);
+  g.fillStyle=ink;g.font='600 15px '+cv('--head');g.textAlign='left';g.fillText(a.name,x0+12,y0+19);
+  // state pill
+  const st=DISP[a.state];g.font='500 12px '+cv('--font');const tw=g.measureText(st).width+18;
+  g.fillStyle=SCOL[a.state];g.beginPath();g.roundRect(x0+w-tw,y0+3,tw,22,11);g.fill();
+  g.fillStyle='#fff';g.textAlign='center';g.fillText(st,x0+w-tw/2,y0+18);
+  const cy=y0+h*.46,R=Math.min(h*.30,w*.17);
+  // motor body
+  const bx=x0+w*.04,bw=w*.30,bh=R*1.35;
+  g.fillStyle=cv('--fbhead');g.strokeStyle=line;g.lineWidth=1;
+  g.fillRect(bx,cy-bh/2,bw,bh);g.strokeRect(bx,cy-bh/2,bw,bh);
+  g.fillStyle=col;g.fillRect(bx+bw-8,cy-bh/2-6,8,bh+12);
+  g.fillStyle=cv('--fb');g.fillRect(bx-10,cy-bh/2+8,10,bh-16);
+  g.strokeStyle=cv('--line');for(let i=1;i<9;i++){const xx=bx+i*(bw-12)/9;g.beginPath();g.moveTo(xx,cy-bh/2+3);g.lineTo(xx,cy+bh/2-3);g.stroke()}
+  // shaft
+  const gx=x0+w*.64;
+  g.fillStyle=muted;g.fillRect(bx+bw,cy-5,gx-bx-bw,10);
+  // gear
+  g.save();g.translate(gx,cy);
+  g.strokeStyle=muted;g.lineWidth=1;
+  for(let d=0;d<360;d+=30){const an=(d-90)*Math.PI/180;g.beginPath();g.moveTo(Math.cos(an)*(R+9),Math.sin(an)*(R+9));g.lineTo(Math.cos(an)*(R+(d%90?14:18)),Math.sin(an)*(R+(d%90?14:18)));g.stroke()}
+  g.rotate((a.pos-90)*Math.PI/180);
+  gearPath(g,R,16,R*.14);g.fillStyle=panel;g.fill();g.strokeStyle=col;g.lineWidth=2.5;g.stroke();
+  g.strokeStyle=muted;g.lineWidth=1.5;for(let i=0;i<3;i++){g.rotate(Math.PI*2/3);g.beginPath();g.moveTo(0,0);g.lineTo(R*.8,0);g.stroke()}
+  g.fillStyle=col;g.beginPath();g.arc(R*.78,0,5,0,7);g.fill();
+  g.beginPath();g.arc(0,0,7,0,7);g.fillStyle=ink;g.fill();
+  g.restore();
+  // zero marker
+  g.fillStyle=ink;g.beginPath();g.moveTo(gx,cy-R-20);g.lineTo(gx-5,cy-R-28);g.lineTo(gx+5,cy-R-28);g.fill();
+  // readouts
+  const ry=y0+h-46;
+  g.textAlign='left';g.fillStyle=muted;g.font='400 12px '+cv('--font');
+  g.fillText('Position',x0+4,ry);g.fillText('Velocity',x0+4,ry+18);
+  g.fillStyle=ink;g.font='500 13px '+cv('--mono');
+  g.fillText(a.pos.toFixed(1)+' °',x0+70,ry);g.fillText(a.vel.toFixed(1)+' °/s',x0+70,ry+18);
+  // velocity bar
+  const bx0=x0+w*.42,bwid=w*.54,by=ry+8;
+  g.fillStyle=cv('--grid');g.fillRect(bx0,by,bwid,10);
+  const mid=bx0+bwid/2,sc=bwid/2/400,vv=Math.max(-400,Math.min(400,a.vel));
+  g.fillStyle=col;g.fillRect(Math.min(mid,mid+vv*sc),by,Math.abs(vv*sc),10);
+  g.fillStyle=ink;g.fillRect(mid-1,by-3,2,16);
+  g.fillStyle=muted;g.font='400 10px '+cv('--mono');g.textAlign='center';g.fillText('−400',bx0+10,by+24);g.fillText('0',mid,by+24);g.fillText('+400',bx0+bwid-12,by+24);
+  return{gx,cy,R};
+}
+function drawMotors(){
+  const c=$('#motors'),W0=c.clientWidth,wide=W0>=620,H=wide?300:520;
+  const[g,W]=fit(c,H);g.clearRect(0,0,W,H);
+  const ph=wide?H:H/2,pw=wide?W/2:W;
+  const m=drawAxis(g,wide?4:4,0,pw-12,ph-6,axes.M,cv('--master'));
+  const s=drawAxis(g,wide?pw+8:4,wide?0:ph,pw-16,ph-6,axes.S,cv('--slave'));
+  // electronic gear link
+  const cmd=axes.S.cmd,geared=cmd&&cmd.kind==='gear';
+  const ax=m.gx,ay=m.cy,bx=s.gx,by=s.cy;
+  const x1=wide?ax+m.R+22:ax,y1=wide?ay:ay+m.R+22,x2=wide?bx-s.R-22:bx,y2=wide?by:by-s.R-34;
+  g.save();g.lineWidth=2.5;
+  g.strokeStyle=geared?cv('--ok'):cv('--line');
+  g.setLineDash(geared?[8,6]:[3,6]);g.lineDashOffset=geared?-(axes.M.pos*0.3)%14:0;
+  g.beginPath();
+  if(wide){g.moveTo(x1,y1);g.bezierCurveTo(x1+40,y1-90,x2-40,y2-90,x2,y2)}else{g.moveTo(x1,y1);g.bezierCurveTo(x1+70,y1+40,x2+70,y2-40,x2,y2)}
+  g.stroke();g.restore();
+  const lbl=geared?`electronic gear ${cmd.num}:${cmd.den}  ${cmd.sync?'InGear':'synchronizing'}`:'no gear coupling';
+  g.font='500 12px '+cv('--mono');g.textAlign='center';g.fillStyle=geared?cv('--ok'):cv('--muted');
+  if(wide)g.fillText(lbl,(x1+x2)/2,Math.min(y1,y2)-86);else g.fillText(lbl,(x1+x2)/2+40,(y1+y2)/2);
+}
+
+/* state diagram */
+const NODES={Synchronized:{x:380,y:10,w:160,h:46,l:['Synchronized','Motion']},Discrete:{x:40,y:170,w:160,h:46,l:['Discrete Motion']},Continuous:{x:720,y:170,w:160,h:46,l:['Continuous','Motion']},Stopping:{x:380,y:320,w:160,h:46,l:['Stopping']},ErrorStop:{x:380,y:420,w:160,h:46,l:['ErrorStop']},Homing:{x:40,y:520,w:160,h:46,l:['Homing']},StandStill:{x:370,y:510,w:180,h:64,l:['StandStill']},Disabled:{x:720,y:520,w:160,h:46,l:['Disabled'],dbl:true}};
+const EDGES=[['M460,56 L460,320',0],['M420,56 L150,170',1],['M500,56 L770,170',1],['M200,193 L720,193',1],['M170,216 L390,325',0],['M750,216 L530,325',0],['M130,216 L385,430',0],['M790,216 L535,430',0],['M460,366 L460,420',0],['M440,466 L440,510',0],['M480,510 L480,466',0],['M100,216 C90,400 230,520 372,540',1],['M820,216 C830,400 690,500 548,535',1],['M540,345 C650,380 640,490 548,525',1],['M200,543 L370,543',1],['M720,543 L550,543',1],['M380,33 C200,33 20,150 30,300 C40,420 200,440 378,445',0,1]];
+function buildSM(){
+  const NS='http://www.w3.org/2000/svg',svg=$('#sm');
+  const mk=(n,at,p)=>{const e=document.createElementNS(NS,n);for(const k in at)e.setAttribute(k,at[k]);(p||svg).appendChild(e);return e};
+  const defs=mk('defs',{});
+  const mr=mk('marker',{id:'ar',viewBox:'0 0 10 10',refX:'9',refY:'5',markerWidth:'8',markerHeight:'8',orient:'auto-start-reverse'},defs);
+  mk('path',{d:'M0,0 L10,5 L0,10 z',fill:'currentColor'},mr);
+  svg.style.color=cv('--muted');
+  EDGES.forEach(([d,bi,dash])=>{const e=mk('path',{d,class:'edge'+(dash?' dash':''),'marker-end':'url(#ar)'});if(bi)e.setAttribute('marker-start','url(#ar)')});
+  for(const k in NODES){
+    const n=NODES[k],gp=mk('g',{class:'node','data-s':k});
+    mk('rect',{class:'box',x:n.x,y:n.y,width:n.w,height:n.h,rx:14},gp);
+    if(n.dbl)mk('rect',{class:'box',x:n.x+6,y:n.y+6,width:n.w-12,height:n.h-12,rx:9,style:'fill:none'},gp);
+    n.l.forEach((t,i)=>{const tx=mk('text',{x:n.x+n.w/2,y:n.y+n.h/2+5+(i-(n.l.length-1)/2)*18},gp);tx.textContent=t});
+    const bm=mk('g',{class:'badge bm'},gp);mk('circle',{cx:n.x+14,cy:n.y,r:11,fill:'var(--master)'},bm);const t1=mk('text',{x:n.x+14,y:n.y+4,'text-anchor':'middle'},bm);t1.textContent='M';
+    const bs=mk('g',{class:'badge bs'},gp);mk('circle',{cx:n.x+n.w-14,cy:n.y,r:11,fill:'var(--slave)'},bs);const t2=mk('text',{x:n.x+n.w-14,y:n.y+4,'text-anchor':'middle'},bs);t2.textContent='S';
+  }
+}
+function updateSM(){
+  document.querySelectorAll('#sm .node').forEach(n=>{const s=n.dataset.s;n.classList.toggle('m',axes.M.state===s);n.classList.toggle('s',axes.S.state===s)});
+}
+
+/* function block panel */
+const els={};
+function buildFBs(){
+  const root=$('#fbs');root.innerHTML='';
+  [['M','MyMaster (virtual master axis)','--master'],['S','MySlave','--slave']].forEach(([k,title,colv])=>{
+    const h=document.createElement('div');h.className='axhead';
+    h.innerHTML=`<span class="sw" style="background:var(${colv})"></span>${title}<span class="sp"></span>`;
+    const sp=h.querySelector('.sp');
+    const b1=document.createElement('button');b1.className='btn';b1.textContent='Inject drive fault';b1.onclick=()=>injectFault(axes[k]);
+    const b2=document.createElement('button');b2.className='btn';b2.id='clr'+k;b2.onclick=()=>{axes[k].fault=false;log(axes[k],'fault condition cleared')};
+    b2.textContent='Clear fault condition';sp.append(b1,b2);root.appendChild(h);
+    const grid=document.createElement('div');grid.className='fbgrid';root.appendChild(grid);
+    FBS.filter(f=>f.ax===k).forEach(f=>{
+      const d=PINS[f.type],e=document.createElement('div');e.className='fb';
+      let html=`<header>${f.label}<small>${f.type}</small></header><div class="body"><div>`;
+      if(f.type==='MC_GearIn')html+=`<div class="pin"><span>Master</span><span class="led">MyMaster</span></div><div class="pin"><span>Slave</span><span class="led">MySlave</span></div>`;
+      d.in.forEach(([p,t])=>{html+=`<div class="pin"><span title="${p}">${p}</span>`+(t===B?`<button class="tg" data-f="${f.id}" data-p="${p}" type="button">FALSE</button>`:`<input type="number" step="any" data-f="${f.id}" data-p="${p}" aria-label="${f.label} ${p}">`)+`</div>`});
+      html+=`</div><div>`;
+      d.out.forEach(([p,t])=>{html+=`<div class="pin"><span>${p}</span><span class="led" data-o="${f.id}.${p}">${t===B?'FALSE':'0'}</span></div>`});
+      html+=`</div></div>`;
+      e.innerHTML=html;grid.appendChild(e);els[f.id]=e;
+    });
+  });
+  root.querySelectorAll('.tg').forEach(b=>b.onclick=()=>{const f=FBMAP[b.dataset.f];f.in[b.dataset.p]=!f.in[b.dataset.p]});
+  root.querySelectorAll('input').forEach(i=>{
+    i.value=FBMAP[i.dataset.f].in[i.dataset.p];
+    i.oninput=()=>{const v=parseFloat(i.value);if(!Number.isNaN(v))FBMAP[i.dataset.f].in[i.dataset.p]=v};
+  });
+}
+let ledCache={};
+function updateFBs(){
+  for(const f of FBS){
+    const e=els[f.id];if(!e)continue;
+    e.querySelectorAll('.tg').forEach(b=>{const v=f.in[b.dataset.p];b.classList.toggle('on',v);b.textContent=v?'TRUE':'FALSE'});
+    e.querySelectorAll('input').forEach(i=>{if(document.activeElement!==i&&parseFloat(i.value)!==f.in[i.dataset.p])i.value=f.in[i.dataset.p]});
+    e.querySelectorAll('[data-o]').forEach(l=>{
+      const p=l.dataset.o.split('.')[1],v=f.out[p];
+      const isErr=p==='Error'||p==='ErrorID',isCA=p==='CommandAborted';
+      const txt=typeof v==='boolean'?(v?'TRUE':'FALSE'):String(v);
+      const on=typeof v==='boolean'?v:v!==0;
+      if(l.textContent!==txt)l.textContent=txt;
+      l.classList.toggle('on',on);l.classList.toggle('bad',isErr);l.classList.toggle('warn',isCA);
+    });
+    e.classList.toggle('active',!!(f.out.Active||f.out.Busy||f.out.InGear||f.out.Status));
+  }
+  ['M','S'].forEach(k=>{const b=$('#clr'+k);b.disabled=!axes[k].fault;b.style.opacity=axes[k].fault?1:.5});
+}
+function updateLog(){
+  if(!logDirty)return;logDirty=false;
+  $('#log').innerHTML=LOG.map(l=>`<li><span class="t">${l.t.toFixed(1)}</span><span class="${l.ax}">${l.msg.replace(/</g,'&lt;')}</span></li>`).join('');
+}
+
+/* ---------- control ---------- */
+let playing=true,speed=1,acc=0,last=0,curId='gear';
+function setPlaying(p){playing=p;$('#play').textContent=p?'Pause':'Play'}
+function load(id,ff){
+  curId=id;scen=SCEN[id];resetAll();finished=false;say='';$('#say').textContent='';
+  scen.setup();steps=scen.steps.slice().sort((a,b)=>a.t-b.t);stepIdx=0;
+  setSelected(scen.signals);
+  document.querySelectorAll('#scen .tab').forEach(t=>t.setAttribute('aria-selected',t.dataset.id===id));
+  buildFBs();
+  if(ff){for(let i=0;i<Math.round(ff/DT);i++)tick()}
+  setPlaying(true);
+}
+function frame(ts){
+  const dt=Math.min(0.1,(ts-last)/1000||0);last=ts;
+  if(playing){acc+=dt*speed;let n=0;while(acc>=DT&&n<800){tick();acc-=DT;n++}if(n>=800)acc=0}
+  $('#clock').textContent=`t = ${simT.toFixed(1)} s`;
+  if(!$('#view-lab').hidden){drawMotors();drawGraph();updateSM();updateFBs();updateLog()}
+  requestAnimationFrame(frame);
+}
+function init(){
+  const nav=$('#scen');
+  Object.keys(SCEN).forEach(id=>{const b=document.createElement('button');b.className='tab';b.dataset.id=id;b.type='button';b.innerHTML=`${SCEN[id].title}<small>${SCEN[id].blurb}</small>`;b.onclick=()=>load(id,0);nav.appendChild(b)});
+  $('#errs').innerHTML='<b>ErrorID values</b>'+Object.keys(ERR).map(k=>`<span>${k}: ${ERR[k]}</span>`).join('');
+  $('#play').onclick=()=>{if(finished){load(curId,0)}else setPlaying(!playing)};
+  $('#restart').onclick=()=>load(curId,0);
+  $('#speed').onchange=e=>{speed=parseFloat(e.target.value)};
+  buildAddSel();buildSM();
+  load('gear',17);
+  requestAnimationFrame(frame);
+}
+init();
+})();
+</script>
+<script>
+(()=>{
+'use strict';
+const $=s=>document.querySelector(s);
+const cv=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function fit(c,h){const dpr=Math.min(window.devicePixelRatio||1,2),w=c.clientWidth;if(c.width!==Math.round(w*dpr)||c.height!==Math.round(h*dpr)){c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);c.style.height=h+'px'}const g=c.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);return[g,w,h]}
+const mono=()=>'11px '+cv('--mono');
+
+/* cascade diagram */
+(function(){
+  const NS='http://www.w3.org/2000/svg',svg=$('#cascade');
+  const mk=(n,a,t)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);if(t)e.textContent=t;svg.appendChild(e);return e};
+  const defs=mk('defs',{});const m=document.createElementNS(NS,'marker');
+  [['id','a2'],['viewBox','0 0 10 10'],['refX','9'],['refY','5'],['markerWidth','7'],['markerHeight','7'],['orient','auto']].forEach(([k,v])=>m.setAttribute(k,v));
+  const p=document.createElementNS(NS,'path');p.setAttribute('d','M0,0 L10,5 L0,10 z');p.setAttribute('fill','var(--muted)');m.appendChild(p);defs.appendChild(m);
+  const line=(d,dash)=>mk('path',{d,fill:'none',stroke:'var(--muted)','stroke-width':1.5,'marker-end':'url(#a2)','stroke-dasharray':dash?'5 4':''});
+  const box=(x,y,w,h,l1,l2,on)=>{mk('rect',{x,y,width:w,height:h,rx:6,fill:'var(--panel)',stroke:on?'var(--sig)':'var(--line)','stroke-width':on?2.5:1.5});
+    mk('text',{x:x+w/2,y:y+h/2-(l2?2:-5),'text-anchor':'middle','font-size':14,'font-weight':600,fill:'var(--ink)'},l1);
+    if(l2)mk('text',{x:x+w/2,y:y+h/2+15,'text-anchor':'middle','font-size':11,fill:'var(--muted)'},l2)};
+  const sum=(x,y)=>{mk('circle',{cx:x,cy:y,r:11,fill:'var(--panel)',stroke:'var(--ink)','stroke-width':1.3});mk('text',{x:x,y:y+4,'text-anchor':'middle','font-size':14,fill:'var(--ink)'},'±')};
+  const lab=(x,y,t,a)=>mk('text',{x,y,'text-anchor':a||'middle','font-size':11,fill:'var(--muted)'},t);
+  const Y=80;
+  lab(10,Y-30,'Setpoint','start');lab(10,Y-16,'position','start');
+  line('M10,'+Y+' L99,'+Y);sum(110,Y);line('M121,'+Y+' L160,'+Y);
+  box(160,Y-28,100,56,'Position','P  (Kp)',1);line('M260,'+Y+' L289,'+Y);lab(272,Y-12,'speed cmd');
+  sum(300,Y);line('M311,'+Y+' L340,'+Y);
+  box(340,Y-28,100,56,'Velocity','PI  (Kv, Ki)',1);line('M440,'+Y+' L469,'+Y);lab(455,Y-12,'torque cmd');
+  sum(480,Y);line('M491,'+Y+' L520,'+Y);
+  box(520,Y-28,100,56,'Current','PI  (FOC)',1);line('M620,'+Y+' L660,'+Y);
+  box(660,Y-28,90,56,'Inverter','PWM');line('M750,'+Y+' L790,'+Y);lab(770,Y-12,'3-phase');
+  box(790,Y-28,100,56,'Motor','+ encoder');
+  // feedback
+  line('M840,'+(Y+28)+' L840,215 L110,215 L110,'+(Y+11));lab(475,232,'encoder position');
+  line('M300,215 L300,'+(Y+11),1);lab(300,252,'speed (d/dt)');
+  line('M705,'+(Y+28)+' L705,185 L480,185 L480,'+(Y+11));lab(595,178,'phase current');
+  lab(110,Y+34,'−','middle');
+})();
+
+/* ---------- tuning sim ---------- */
+const P={kp:12,kv:120,ki:20,lo:2,cmd:'trap'};
+['kp','kv','ki','lo'].forEach(k=>{const e=$('#'+k),v=$('#v_'+k);const up=()=>{P[k]=parseFloat(e.value);v.textContent=e.value;};e.oninput=up;up()});
+$('#cmd').onchange=e=>{P.cmd=e.target.value;resetT()};
+let kick=0;$('#kick').onclick=()=>{kick=0.5};
+const dt=0.001,HN=900; // 3 s at 200 Hz
+const TS={th:0,w:0,tq:0,integ:0,ref:0,rv:0,t:0,target:0,hist:{ref:new Float32Array(HN),th:new Float32Array(HN),w:new Float32Array(HN),tq:new Float32Array(HN),n:0,head:0},mv:null,read:'Waiting for first move…'};
+function resetT(){Object.assign(TS,{th:0,w:0,tq:0,integ:0,ref:0,rv:0,t:0,target:0,mv:null})}
+const QMAX=6000;
+function simStep(){
+  TS.t+=dt;
+  const tgt=(Math.floor(TS.t/1.5)%2)?0:180;
+  if(tgt!==TS.target){
+    if(TS.mv){const m=TS.mv;const over=Math.max(0,(m.dir>0?m.peak-m.to:m.to-m.peak));TS.read=`Last move: overshoot ${over.toFixed(1)}°, settled to ±2° in ${m.tset<0?'—':Math.round(m.tset*1000)+' ms'}`;$('#tuneRead').textContent=TS.read}
+    TS.mv={from:TS.target,to:tgt,dir:Math.sign(tgt-TS.target)||1,peak:TS.th,t0:TS.t,tset:0};TS.target=tgt;
+  }
+  if(P.cmd==='step'){TS.ref=tgt;TS.rv=0}
+  else{const rem=tgt-TS.ref,d=Math.sign(rem),vd=d*Math.min(600,Math.sqrt(2*1500*Math.abs(rem)));
+    const lim=1500*dt;TS.rv+=Math.max(-lim,Math.min(lim,vd-TS.rv));TS.ref+=TS.rv*dt;if(Math.abs(tgt-TS.ref)<0.05&&Math.abs(TS.rv)<5){TS.ref=tgt;TS.rv=0}}
+  const J=1+P.lo;
+  const e=TS.ref-TS.th;let vc=P.kp*e;vc=Math.max(-900,Math.min(900,vc));
+  const ve=vc-TS.w;TS.integ=Math.max(-300,Math.min(300,TS.integ+ve*dt));
+  let tc=P.kv*ve+P.kv*P.ki*TS.integ*0.1;tc=Math.max(-QMAX,Math.min(QMAX,tc));
+  TS.tq+=(tc-TS.tq)*dt/0.002;
+  const tl=kick>0?1500:0;if(kick>0)kick-=dt;
+  const a=(TS.tq-tl)/J;TS.w+=a*dt;TS.th+=TS.w*dt;
+  if(!isFinite(TS.th)||Math.abs(TS.th)>1e5)resetT();
+  if(TS.mv){const m=TS.mv;if(m.dir>0?TS.th>m.peak:TS.th<m.peak)m.peak=TS.th;if(Math.abs(TS.th-m.to)>2)m.tset=TS.t-m.t0}
+  if(Math.round(TS.t/dt)%5===0){const h=TS.hist;h.ref[h.head]=TS.ref;h.th[h.head]=TS.th;h.w[h.head]=TS.w;h.tq[h.head]=TS.tq;h.head=(h.head+1)%HN;if(h.n<HN)h.n++}
+}
+function drawTune(){
+  const c=$('#tune');const[g,W,H]=fit(c,420);g.clearRect(0,0,W,H);
+  const lanes=[['Position °',e=>e.th,'ref',-30,230],['Velocity °/s',e=>e.w,null,-900,900],['Torque (J=1 units)',e=>e.tq,null,-QMAX,QMAX]];
+  const left=64,pw=W-left-10,lh=(H-30)/3-8,h=TS.hist;
+  const grid=cv('--grid'),muted=cv('--muted'),ink=cv('--ink'),col=cv('--slave'),ref=cv('--master');
+  g.font=mono();
+  lanes.forEach(([name,_,refk,lo,hi],i)=>{
+    const y0=8+i*(lh+8);
+    const Y=v=>y0+lh-(v-lo)/(hi-lo)*lh;
+    g.fillStyle=cv('--bg');g.fillRect(left,y0,pw,lh);
+    g.strokeStyle=grid;g.lineWidth=1;g.beginPath();g.moveTo(left,Y(0));g.lineTo(left+pw,Y(0));g.stroke();
+    g.fillStyle=muted;g.textAlign='right';g.textBaseline='middle';
+    g.fillText(String(hi),left-5,y0+6);g.fillText(String(lo),left-5,y0+lh-6);g.fillText('0',left-5,Y(0));
+    g.save();g.translate(12,y0+lh/2);g.rotate(-Math.PI/2);g.textAlign='center';g.fillStyle=ink;g.fillText(name,0,0);g.restore();
+    const draw=(key,color,dash,w)=>{g.strokeStyle=color;g.lineWidth=w;g.setLineDash(dash);g.beginPath();
+      for(let k=0;k<h.n;k++){const idx=(h.head-h.n+k+HN)%HN;const v=Math.max(lo,Math.min(hi,h[key][idx]));const x=left+k/(HN-1)*pw;k?g.lineTo(x,Y(v)):g.moveTo(x,Y(v))}g.stroke();g.setLineDash([])};
+    if(refk)draw('ref',ref,[5,4],1.6);
+    draw(i===0?'th':i===1?'w':'tq',col,[],2.2);
+  });
+  g.fillStyle=muted;g.textAlign='right';g.textBaseline='top';g.fillText('3 s window · orange dashed = command',W-10,H-16);
+}
+
+/* ---------- commutation ---------- */
+const CM={ang:0};
+$('#cs').oninput=e=>{$('#v_cs').textContent=e.target.value+' °/s'};$('#v_cs').textContent=$('#cs').value+' °/s';
+const PH=[['A',90,'#e04b4b'],['B',210,'#2f9bd6'],['C',330,'#e0a52b']];
+function drawCommut(){
+  const c=$('#commut');const[g,W,H]=fit(c,340);g.clearRect(0,0,W,H);
+  const ink=cv('--ink'),muted=cv('--muted'),panel=cv('--panel'),line=cv('--line'),grid=cv('--grid');
+  const th=CM.ang*Math.PI/180;
+  const cx=Math.min(150,W*0.28),cy=H/2-6,R=Math.min(125,cx-10,H/2-24);
+  // stator
+  g.fillStyle=cv('--fbhead');g.beginPath();g.arc(cx,cy,R,0,7);g.arc(cx,cy,R*0.66,0,7,true);g.fill('evenodd');
+  const cur=PH.map(([n,phi])=>Math.cos(th+Math.PI/2-phi*Math.PI/180));
+  PH.forEach(([n,phi,col],i)=>{
+    [1,-1].forEach(sg=>{
+      const a=(phi+(sg<0?180:0))*Math.PI/180*-1; // canvas y is down
+      const v=cur[i]*sg,r=R*0.83;
+      g.fillStyle=col;g.globalAlpha=0.25+0.75*Math.abs(v);
+      g.beginPath();g.arc(cx+Math.cos(a)*r,cy+Math.sin(a)*r,R*0.11,0,7);g.fill();g.globalAlpha=1;
+      g.fillStyle='#fff';g.font='600 11px '+cv('--font');g.textAlign='center';g.textBaseline='middle';
+      g.fillText(n+(sg>0?'+':'−'),cx+Math.cos(a)*r,cy+Math.sin(a)*r);
+      // current direction dot or cross
+      g.strokeStyle='#fff';g.lineWidth=1.3;
+      const rr=R*0.045;
+      if(v>0.15){g.beginPath();g.arc(cx+Math.cos(a)*r,cy+Math.sin(a)*r-R*0.17,rr,0,7);g.stroke()}
+      else if(v<-0.15){g.beginPath();g.moveTo(cx+Math.cos(a)*r-rr,cy+Math.sin(a)*r-R*0.17-rr);g.lineTo(cx+Math.cos(a)*r+rr,cy+Math.sin(a)*r-R*0.17+rr);g.moveTo(cx+Math.cos(a)*r+rr,cy+Math.sin(a)*r-R*0.17-rr);g.lineTo(cx+Math.cos(a)*r-rr,cy+Math.sin(a)*r-R*0.17+rr);g.stroke()}
+    });
+  });
+  // rotor
+  g.save();g.translate(cx,cy);g.rotate(-th);
+  const rr=R*0.52;
+  g.fillStyle='#d6453d';g.beginPath();g.arc(0,0,rr,-Math.PI/2,Math.PI/2);g.closePath();g.fill();
+  g.fillStyle='#e9edf0';g.beginPath();g.arc(0,0,rr,Math.PI/2,Math.PI*1.5);g.closePath();g.fill();
+  g.fillStyle='#222';g.font='600 18px '+cv('--font');g.textAlign='center';g.textBaseline='middle';
+  g.fillText('N',rr*0.5,0);g.fillText('S',-rr*0.5,0);
+  g.restore();
+  // stator field arrow at th+90deg
+  const fa=-(th+Math.PI/2);
+  g.strokeStyle=cv('--sig');g.lineWidth=3;g.beginPath();g.moveTo(cx,cy);g.lineTo(cx+Math.cos(fa)*rr*0.9,cy+Math.sin(fa)*rr*0.9);g.stroke();
+  const hx=cx+Math.cos(fa)*rr*0.9,hy=cy+Math.sin(fa)*rr*0.9;g.fillStyle=cv('--sig');g.beginPath();g.arc(hx,hy,5,0,7);g.fill();
+  g.fillStyle=muted;g.font=mono();g.textAlign='center';g.textBaseline='top';g.fillText('blue arrow = stator field',cx,cy+R+8);
+  // current plot
+  const px=cx+R+40,pw=W-px-10,ph=(H-60)/3-6;
+  g.textBaseline='middle';
+  PH.forEach(([n,phi,col],i)=>{
+    const y0=14+i*(ph+14),Y=v=>y0+ph/2-v*ph/2;
+    g.strokeStyle=grid;g.lineWidth=1;g.beginPath();g.moveTo(px,Y(0));g.lineTo(px+pw,Y(0));g.stroke();
+    g.strokeStyle=col;g.lineWidth=2;g.beginPath();
+    for(let d=0;d<=360;d+=4){const v=Math.cos((d+90-phi)*Math.PI/180);const x=px+d/360*pw;d?g.lineTo(x,Y(v)):g.moveTo(x,Y(v))}g.stroke();
+    g.fillStyle=col;g.textAlign='right';g.fillText('i'+n,px-6,Y(0));
+    const x=px+(CM.ang%360+360)%360/360*pw;g.fillStyle=ink;g.beginPath();g.arc(x,Y(cur[i]),4,0,7);g.fill();
+  });
+  const xx=px+(CM.ang%360+360)%360/360*pw;g.strokeStyle=muted;g.setLineDash([3,4]);g.beginPath();g.moveTo(xx,6);g.lineTo(xx,H-40);g.stroke();g.setLineDash([]);
+  g.fillStyle=muted;g.textAlign='left';g.textBaseline='top';g.fillText('0°',px,H-34);g.textAlign='right';g.fillText('360° rotor angle',px+pw,H-34);
+  $('#phRead').textContent=`Rotor ${((CM.ang%360+360)%360).toFixed(0)}°   iA ${cur[0].toFixed(2)}  iB ${cur[1].toFixed(2)}  iC ${cur[2].toFixed(2)}  (sum ${(cur[0]+cur[1]+cur[2]).toFixed(2)})`;
+}
+
+/* ---------- encoder ---------- */
+const EN={ang:0,hist:[],t:0};
+$('#es').oninput=e=>{$('#v_es').textContent=e.target.value+' °/s'};$('#v_es').textContent=$('#es').value+' °/s';
+function drawEnc(){
+  const c=$('#enc');const[g,W,H]=fit(c,340);g.clearRect(0,0,W,H);
+  const N=parseInt($('#en').value),p=360/N;
+  const ink=cv('--ink'),muted=cv('--muted'),panel=cv('--panel'),line=cv('--line'),sig=cv('--sig'),grid=cv('--grid');
+  const cx=Math.min(140,W*.28),cy=H/2,R=Math.min(125,cx-8,H/2-14);
+  g.save();g.translate(cx,cy);g.rotate(-EN.ang*Math.PI/180);
+  g.fillStyle=cv('--fb');g.beginPath();g.arc(0,0,R,0,7);g.fill();
+  g.fillStyle=panel;
+  const r1=R*0.62,r2=R*0.9;
+  for(let k=0;k<N;k++){const a0=-(k*p)*Math.PI/180,a1=-(k*p+p/2)*Math.PI/180;g.beginPath();g.arc(0,0,r2,a0,a1,true);g.arc(0,0,r1,a1,a0,false);g.closePath();g.fill()}
+  g.fillStyle=ink;g.beginPath();g.arc(0,0,R*0.12,0,7);g.fill();
+  g.fillStyle='#d6453d';g.beginPath();g.arc(R*0.5,0,3.5,0,7);g.fill();
+  g.restore();
+  // sensors A and B
+  const sa=-Math.PI/2,sb=-Math.PI/2+(p/4)*Math.PI/180;
+  [['A',sa],['B',sb]].forEach(([n,a],i)=>{
+    const x=cx+Math.cos(a)*(R*0.76),y=cy+Math.sin(a)*(R*0.76);
+    g.fillStyle=i?'#e0a52b':'#2f9bd6';g.fillRect(x-4,y-9,8,18);
+    g.fillStyle=ink;g.font='600 12px '+cv('--font');g.textAlign='center';g.fillText(n,x+(i?14:-14),y-14);
+  });
+  // signals
+  const u=EN.ang/p,fr=v=>((v%1)+1)%1;
+  const A=fr(u)<0.5?1:0,B=fr(u+0.25)<0.5?1:0,Z=fr(EN.ang/360)<(p/360)?1:0;
+  const px=cx+R+36,pw=W-px-10,sh=(H-30)/3-12;
+  const WIN=3;
+  [['A','#2f9bd6'],['B','#e0a52b'],['Z',cv('--muted')]].forEach(([n,col],i)=>{
+    const y0=10+i*(sh+16),Y=v=>y0+sh-v*sh+ (v?0:-0);
+    g.strokeStyle=grid;g.lineWidth=1;g.beginPath();g.moveTo(px,y0+sh);g.lineTo(px+pw,y0+sh);g.stroke();
+    g.strokeStyle=col;g.lineWidth=2.4;g.beginPath();let st=false,prev=0;
+    EN.hist.forEach(s=>{const x=px+pw-(EN.t-s.t)/WIN*pw;if(x<px)return;const v=s[n];if(!st){g.moveTo(x,Y(v));st=true}else{g.lineTo(x,Y(prev));g.lineTo(x,Y(v))}prev=v});
+    g.lineTo(px+pw,Y(prev));g.stroke();
+    g.fillStyle=ink;g.font='600 13px '+cv('--font');g.textAlign='right';g.textBaseline='middle';g.fillText(n,px-8,y0+sh/2);
+  });
+  g.fillStyle=muted;g.font=mono();g.textAlign='right';g.textBaseline='top';g.fillText('3 s window',px+pw,H-18);
+  const dir=parseFloat($('#es').value);
+  $('#encRead').textContent=`Count ${Math.floor(EN.ang/(p/4))}  ·  ${4*N} counts/turn (${(360/(4*N)).toFixed(2)}° per count)  ·  ${dir>0?'B leads A':dir<0?'A leads B':'stopped'}`;
+  EN.cur={t:EN.t,A,B,Z};
+}
+
+/* ---------- torque / speed ---------- */
+$('#ts').oninput=$('#tt').oninput=()=>{};
+function drawTW(){
+  const c=$('#tw');const[g,W,H]=fit(c,330);g.clearRect(0,0,W,H);
+  const left=46,bot=34,top=12,right=14,pw=W-left-right,ph=H-top-bot;
+  const X=v=>left+v/6000*pw,Y=v=>top+ph-v/7*ph;
+  const cont=s=>s<=3000?2:2-0.8*(s-3000)/3000,peak=s=>s<=3000?6:6-3*(s-3000)/3000;
+  const grid=cv('--grid'),muted=cv('--muted'),ink=cv('--ink');
+  g.font=mono();g.textBaseline='middle';
+  for(let t=0;t<=7;t+=1){g.strokeStyle=grid;g.lineWidth=1;g.beginPath();g.moveTo(left,Y(t));g.lineTo(left+pw,Y(t));g.stroke();g.fillStyle=muted;g.textAlign='right';g.fillText(String(t),left-6,Y(t))}
+  g.textAlign='center';g.textBaseline='top';for(let s=0;s<=6000;s+=1000){g.fillStyle=muted;g.fillText(String(s),X(s),top+ph+6)}
+  g.fillStyle=ink;g.textAlign='center';g.fillText('Speed (rpm)',left+pw/2,H-14);
+  g.save();g.translate(12,top+ph/2);g.rotate(-Math.PI/2);g.textBaseline='middle';g.fillText('Torque (N·m)',0,0);g.restore();
+  const area=(f,color)=>{g.fillStyle=color;g.beginPath();g.moveTo(X(0),Y(0));for(let s=0;s<=6000;s+=100)g.lineTo(X(s),Y(f(s)));g.lineTo(X(6000),Y(0));g.closePath();g.fill()};
+  area(peak,'color-mix(in srgb,'+cv('--warn')+' 30%,transparent)');area(cont,'color-mix(in srgb,'+cv('--ok')+' 35%,transparent)');
+  [[peak,cv('--warn'),'peak'],[cont,cv('--ok'),'continuous']].forEach(([f,col,nm])=>{g.strokeStyle=col;g.lineWidth=2.4;g.beginPath();for(let s=0;s<=6000;s+=100){const x=X(s),y=Y(f(s));s?g.lineTo(x,y):g.moveTo(x,y)}g.stroke();g.fillStyle=col;g.textAlign='left';g.textBaseline='bottom';g.fillText(nm,X(3300),Y(f(3300))-4)});
+  const s=parseFloat($('#ts').value),t=parseFloat($('#tt').value);
+  const zone=t<=cont(s)?['continuous zone: can run all day',cv('--ok')]:t<=peak(s)?['peak zone: short bursts only',cv('--warn')]:['outside the limit: the drive cannot deliver this',cv('--bad')];
+  g.fillStyle=zone[1];g.strokeStyle=ink;g.lineWidth=2;g.beginPath();g.arc(X(s),Y(t),8,0,7);g.fill();g.stroke();
+  $('#v_ts').textContent=s+' rpm';$('#v_tt').textContent=t.toFixed(1)+' N·m';$('#twRead').textContent=zone[0];
+}
+
+/* ---------- loop ---------- */
+let last=0,accT=0;
+function frame(ts){
+  const dtr=Math.min(0.05,(ts-last)/1000||0);last=ts;
+  if(!$('#view-servos').hidden){
+    accT+=dtr;let n=0;while(accT>=dt&&n<80){simStep();accT-=dt;n++}if(n>=80)accT=0;
+    CM.ang+=parseFloat($('#cs').value)*dtr;
+    const ev=parseFloat($('#es').value);EN.ang+=ev*dtr;EN.t+=dtr;
+    drawEnc();if(EN.cur){EN.hist.push(EN.cur);if(EN.hist.length>600)EN.hist.shift()}
+    drawTune();drawCommut();drawTW();
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+<script>
+(()=>{
+const views={lab:document.getElementById('view-lab'),servos:document.getElementById('view-servos'),sizing:document.getElementById('view-sizing'),mechanisms:document.getElementById('view-mech')};
+function route(){
+  const h=location.hash.slice(1),cur=views[h]?h:'lab';
+  for(const k in views){views[k].hidden=k!==cur;document.getElementById(k==='mechanisms'?'nav-mech':'nav-'+k).setAttribute('aria-current',k===cur?'page':'false')}
+  window.scrollTo(0,0);
+}
+addEventListener('hashchange',route);route();
+})();
+</script>
+<script>
+(()=>{
+'use strict';
+const $=s=>document.querySelector(s);
+const cv=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function fit(c,h){const dpr=Math.min(window.devicePixelRatio||1,2),w=c.clientWidth;if(c.width!==Math.round(w*dpr)||c.height!==Math.round(h*dpr)){c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);c.style.height=h+'px'}const g=c.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);return[g,w,h]}
+const G=9.81,PI2=Math.PI*2;
+const MOT=[{n:'100 W',tc:.32,tp:.95,nm:6000,j:.03},{n:'200 W',tc:.64,tp:1.9,nm:6000,j:.09},{n:'400 W',tc:1.27,tp:3.8,nm:6000,j:.28},{n:'750 W',tc:2.4,tp:7.1,nm:5000,j:.85},{n:'1 kW',tc:3.2,tp:9.5,nm:5000,j:1.5},{n:'1.5 kW',tc:4.8,tp:14.3,nm:5000,j:2.2},{n:'2 kW',tc:6.4,tp:19,nm:5000,j:3.2},{n:'3 kW',tc:9.5,tp:28,nm:5000,j:5}];
+const tpAt=(m,n)=>n<=3000?m.tp:m.tp*(1-0.5*Math.min(1,(n-3000)/Math.max(1,m.nm-3000)));
+const tcAt=(m,n)=>n<=3000?m.tc:m.tc*(1-0.35*Math.min(1,(n-3000)/Math.max(1,m.nm-3000)));
+const num=id=>parseFloat($('#'+id).value);
+function applyMech(){
+  const mech=$('#szMech').value;
+  document.querySelectorAll('#view-sizing [data-for]').forEach(l=>{l.hidden=!l.dataset.for.split(' ').includes(mech)});
+  $('#szJxL').firstChild.textContent=mech==='screw'?'Screw and coupling inertia (kg·cm²)':mech==='belt'?'Pulleys and coupling inertia (kg·cm²)':mech==='rack'?'Pinion and coupling inertia (kg·cm²)':'Load inertia (kg·cm²)';
+  $('#szRadL').firstChild.textContent=mech==='rack'?'Pinion pitch radius (mm)':'Pulley radius (mm)';
+  $('#szDistL').firstChild.textContent=mech==='rotary'?'Move angle (deg)':'Move distance (mm)';
+}
+function inputs(){return{mech:$('#szMech').value,mass:num('szMass'),pitch:num('szPitch'),rad:num('szRad'),jx:num('szJx'),gear:num('szGear'),eff:num('szEff'),mu:num('szMu'),fext:num('szFext'),tf:num('szTf'),vert:$('#szVert').checked,dist:num('szDist'),t:num('szT'),cyc:num('szCyc'),mar:num('szMargin'),ratio:num('szRatio'),bits:num('szBits')}}
+function calc(I,m){
+  const lin=I.mech!=='rotary';
+  const s=lin?I.dist/1000:I.dist*Math.PI/180,t=I.t,cyc=Math.max(I.cyc,t),ph=t/3,dwell=cyc-t;
+  const vL=1.5*s/t,aL=4.5*s/(t*t);
+  const c1=I.mech==='screw'?PI2/(I.pitch/1000):(I.mech==='belt'||I.mech==='rack')?1/(I.rad/1000):1;
+  const c=c1*I.gear,wm=vL*c,am=aL*c,Jx=I.jx*1e-4;
+  const Jlin=lin?I.mass/(c*c):0,Jref=Jlin+Jx/(I.gear*I.gear),Jm=m.j*1e-4,Jtot=Jref+Jm;
+  let Tl,Th=0,Fl=0;
+  if(lin){Fl=I.fext+I.mu*I.mass*G+(I.vert?I.mass*G:0);Tl=Fl/c/I.eff;Th=I.vert?I.mass*G/c:0}else Tl=I.tf/I.gear/I.eff;
+  const Ta=Jtot*am+Tl,Tc=Tl,Td=-Jtot*am+Tl;
+  const peak=Math.max(Math.abs(Ta),Math.abs(Tc),Math.abs(Td));
+  const Trms=Math.sqrt(((Ta*Ta+Tc*Tc+Td*Td)*ph+Th*Th*dwell)/cyc);
+  const n=wm*60/PI2,ratio=Jref/Jm;
+  const E=0.5*Jtot*wm*wm+(lin&&I.vert?I.mass*G*s:0);
+  const Jl1=(lin?I.mass/(c1*c1):0)+Jx,iOpt=Math.sqrt(Jl1/Jm);
+  const chk={pk:peak*(1+I.mar)<=tpAt(m,n),rms:Trms*(1+I.mar)<=m.tc&&Math.abs(Tc)*(1+I.mar)<=tcAt(m,n),spd:n<=0.9*m.nm,ine:ratio<=I.ratio};
+  return{lin,s,t,cyc,ph,dwell,vL,aL,c,wm,am,Jlin,Jref,Jm,Jtot,Tl,Th,Fl,Ta,Tc,Td,peak,Trms,n,ratio,E,iOpt,chk,ok:chk.pk&&chk.rms&&chk.spd&&chk.ine};
+}
+let R=null,sel=-1,userSel=-1,I0=null,valid=false;
+const f=(v,d)=>Number.isFinite(v)?v.toFixed(d):'–';
+function update(){
+  applyMech();
+  const I=I0=inputs();
+  const need=[I.gear,I.eff,I.dist,I.t,I.cyc].every(v=>v>0)&&(I.mech==='rotary'||I.mass>0)&&(I.mech!=='screw'||I.pitch>0)&&((I.mech!=='belt'&&I.mech!=='rack')||I.rad>0)&&I.jx>=0;
+  valid=need;
+  if(!need){$('#szVerdict').textContent='Enter positive values for the move and the mechanism.';$('#szVerdict').className='verdict bad';return}
+  R=MOT.map(m=>calc(I,m));
+  const rec=R.findIndex(r=>r.ok);
+  sel=userSel>=0?userSel:(rec>=0?rec:MOT.length-1);
+  const r=R[sel],m=MOT[sel];
+  const v=$('#szVerdict');
+  if(rec>=0){v.className='verdict good';v.textContent=`Smallest motor that passes every check: ${MOT[rec].n} (${MOT[rec].tc} N·m continuous, ${MOT[rec].tp} N·m peak).`}
+  else{v.className='verdict bad';v.textContent='No motor in this series passes every check. Increase the gear ratio, lengthen the move or lower the load.'}
+  const cards=[['Peak torque',f(r.peak,2)+' N·m','limit '+f(tpAt(m,r.n)/(1+I.mar),2)+' after margin',r.chk.pk],['RMS torque',f(r.Trms,2)+' N·m','limit '+f(m.tc/(1+I.mar),2)+' after margin',r.chk.rms],['Max speed',Math.round(r.n)+' rpm','limit '+Math.round(0.9*m.nm)+' (90 % of max)',r.chk.spd],['Inertia ratio',f(r.ratio,1)+' : 1','limit '+I.ratio+' : 1',r.chk.ine],['Energy per stop',f(r.E,1)+' J','regenerated to the DC bus',null],['Best gear ratio',f(r.iOpt,1)+' : 1','for inertia match with '+m.n,null]];
+  $('#szCards').innerHTML=cards.map(([a,b,c,ok])=>`<div class="card ${ok===null?'':ok?'cok':'cno'}"><b>${a}</b><span class="big">${b}</span><small>${c}</small></div>`).join('');
+  const mark=ok=>`<span class="${ok?'yes':'no'}">${ok?'✓':'✗'}</span>`;
+  $('#szTable').innerHTML=`<thead><tr><th>Motor</th><th>Cont. N·m</th><th>Peak N·m</th><th>Max rpm</th><th>Rotor kg·cm²</th><th>Inertia ratio</th><th>Peak</th><th>RMS</th><th>Speed</th><th>Inertia</th></tr></thead><tbody>`+MOT.map((mm,i)=>{const q=R[i];return`<tr data-i="${i}" class="${i===sel?'sel':''}${i===rec?' rec':''}"><td>${mm.n}${i===rec?' <b class="tag">recommended</b>':''}</td><td>${mm.tc}</td><td>${mm.tp}</td><td>${mm.nm}</td><td>${mm.j}</td><td>${f(q.ratio,1)}</td><td>${mark(q.chk.pk)}</td><td>${mark(q.chk.rms)}</td><td>${mark(q.chk.spd)}</td><td>${mark(q.chk.ine)}</td></tr>`}).join('')+'</tbody>';
+  document.querySelectorAll('#szTable tbody tr').forEach(tr=>tr.onclick=()=>{userSel=parseInt(tr.dataset.i);update()});
+  const lu=r.lin?['m','m/s','m/s²']:['rad','rad/s','rad/s²'];
+  const steps=[
+    `Profile: speed = 1.5 × distance / time = ${f(r.vL,3)} ${lu[1]}, acceleration = 4.5 × distance / time² = ${f(r.aL,2)} ${lu[2]}.`,
+    `At the motor shaft: ${f(r.c,0)} rad per ${lu[0]}, so ${Math.round(r.n)} rpm and ${f(r.am,0)} rad/s² acceleration.`,
+    `Inertia: load reflected to the motor = ${f(r.Jref*1e4,3)} kg·cm², motor rotor = ${f(r.Jm*1e4,3)} kg·cm², total = ${f(r.Jtot*1e4,3)} kg·cm². Ratio ${f(r.ratio,1)} : 1.`,
+    `Load torque at the motor: ${f(r.Tl,3)} N·m from friction${r.lin?' and process force'+(I.vert?' and gravity':''):''}${r.Th?`; holding torque at rest ${f(r.Th,3)} N·m`:''}.`,
+    `Torque: accelerate ${f(r.Ta,3)}, cruise ${f(r.Tc,3)}, decelerate ${f(r.Td,3)} N·m. Peak = ${f(r.peak,3)} N·m.`,
+    `RMS torque over the ${f(r.cyc,2)} s cycle = ${f(r.Trms,3)} N·m.`,
+    `Energy returned to the drive when stopping ≈ ${f(r.E,1)} J.`,
+    `Position resolution at the load with a ${I.bits} bit encoder ≈ ${I.mech==='rotary'?f(360/I.gear/Math.pow(2,I.bits)*3600,2)+' arc-seconds':(PI2/r.c/Math.pow(2,I.bits)*1e6<1?f(PI2/r.c/Math.pow(2,I.bits)*1e9,1)+' nm':f(PI2/r.c/Math.pow(2,I.bits)*1e6,2)+' µm')} per count.`
+  ];
+  $('#szSteps').innerHTML=steps.map(t=>`<li>${t}</li>`).join('');
+}
+function drawProfile(){
+  const c=$('#szProfile');const[g,W,H]=fit(c,320);g.clearRect(0,0,W,H);
+  if(!valid||!R)return;
+  const r=R[sel],m=MOT[sel],I=I0;
+  const grid=cv('--grid'),muted=cv('--muted'),ink=cv('--ink'),sig=cv('--sig');
+  const left=60,right=14,pw=W-left-right,X=t=>left+t/r.cyc*pw;
+  g.font='11px '+cv('--mono');
+  const lanes=[{name:'Speed rpm',lo:0,hi:Math.max(r.n*1.2,100)},{name:'Torque N·m',lo:-Math.max(m.tp,r.peak)*1.1,hi:Math.max(m.tp,r.peak)*1.1}];
+  const lh=(H-34)/2-6;
+  lanes.forEach((L,i)=>{
+    const y0=6+i*(lh+14),Y=v=>y0+lh-(v-L.lo)/(L.hi-L.lo)*lh;
+    g.fillStyle=cv('--bg');g.fillRect(left,y0,pw,lh);
+    g.strokeStyle=grid;g.lineWidth=1;g.beginPath();g.moveTo(left,Y(0));g.lineTo(left+pw,Y(0));g.stroke();
+    g.fillStyle=muted;g.textAlign='right';g.textBaseline='middle';
+    g.fillText(f(L.hi,L.hi>50?0:1),left-5,y0+6);if(L.lo<0)g.fillText(f(L.lo,1),left-5,y0+lh-6);g.fillText('0',left-5,Y(0));
+    g.save();g.translate(11,y0+lh/2);g.rotate(-Math.PI/2);g.textAlign='center';g.fillStyle=ink;g.fillText(L.name,0,0);g.restore();
+    if(i===0){g.strokeStyle=sig;g.lineWidth=2.4;g.beginPath();[[0,0],[r.ph,r.n],[2*r.ph,r.n],[r.t,0],[r.cyc,0]].forEach(([t,v],k)=>k?g.lineTo(X(t),Y(v)):g.moveTo(X(t),Y(v)));g.stroke()}
+    else{
+      const dash=(v,col,label)=>{g.strokeStyle=col;g.lineWidth=1.3;g.setLineDash([5,4]);[v,-v].forEach(vv=>{g.beginPath();g.moveTo(left,Y(vv));g.lineTo(left+pw,Y(vv));g.stroke()});g.setLineDash([]);g.fillStyle=col;g.textAlign='left';g.textBaseline='bottom';g.fillText(label,left+4,Y(v)-2)};
+      dash(m.tp,cv('--warn'),'motor peak');dash(m.tc,cv('--ok'),'motor continuous');
+      g.strokeStyle=cv('--master');g.lineWidth=1.4;g.setLineDash([2,3]);g.beginPath();g.moveTo(left,Y(r.Trms));g.lineTo(left+pw,Y(r.Trms));g.stroke();g.setLineDash([]);g.fillStyle=cv('--master');g.textAlign='right';g.textBaseline='bottom';g.fillText('RMS '+f(r.Trms,2),left+pw-4,Y(r.Trms)-2);
+      g.strokeStyle=sig;g.lineWidth=2.4;g.beginPath();
+      const seg=[[0,r.Ta],[r.ph,r.Ta],[r.ph,r.Tc],[2*r.ph,r.Tc],[2*r.ph,r.Td],[r.t,r.Td],[r.t,r.Th],[r.cyc,r.Th]];
+      seg.forEach(([t,v],k)=>k?g.lineTo(X(t),Y(v)):g.moveTo(X(t),Y(v)));g.stroke();
+    }
+  });
+  g.fillStyle=muted;g.textAlign='center';g.textBaseline='top';
+  [['accelerate',r.ph/2],['cruise',1.5*r.ph],['brake',2.5*r.ph],['hold / rest',(r.t+r.cyc)/2]].forEach(([l,t])=>{if(X(t)+20<left+pw)g.fillText(l,X(t),H-26)});
+  g.textAlign='right';g.fillText('time (cycle '+f(r.cyc,2)+' s)',left+pw,H-13);
+}
+function drawTS(){
+  const c=$('#szTS');const[g,W,H]=fit(c,330);g.clearRect(0,0,W,H);
+  if(!valid||!R)return;
+  const r=R[sel],m=MOT[sel];
+  const left=50,bot=34,top=12,right=14,pw=W-left-right,ph=H-top-bot;
+  const xm=Math.max(m.nm*1.05,r.n*1.1),ym=Math.max(m.tp,r.peak)*1.15;
+  const X=v=>left+v/xm*pw,Y=v=>top+ph-v/ym*ph;
+  const grid=cv('--grid'),muted=cv('--muted'),ink=cv('--ink');
+  g.font='11px '+cv('--mono');
+  for(let k=0;k<=4;k++){const v=ym*k/4;g.strokeStyle=grid;g.lineWidth=1;g.beginPath();g.moveTo(left,Y(v));g.lineTo(left+pw,Y(v));g.stroke();g.fillStyle=muted;g.textAlign='right';g.textBaseline='middle';g.fillText(f(v,1),left-6,Y(v))}
+  g.textAlign='center';g.textBaseline='top';for(let s=0;s<=xm;s+=1000){g.fillStyle=muted;g.fillText(String(s),X(s),top+ph+6)}
+  g.fillStyle=ink;g.fillText('Speed (rpm)',left+pw/2,H-14);
+  g.save();g.translate(11,top+ph/2);g.rotate(-Math.PI/2);g.textBaseline='middle';g.fillText('Torque (N·m)',0,0);g.restore();
+  const area=(fn,col)=>{g.fillStyle=col;g.beginPath();g.moveTo(X(0),Y(0));for(let s=0;s<=m.nm;s+=50)g.lineTo(X(s),Y(fn(m,s)));g.lineTo(X(m.nm),Y(0));g.closePath();g.fill()};
+  area(tpAt,'color-mix(in srgb,'+cv('--warn')+' 30%,transparent)');area(tcAt,'color-mix(in srgb,'+cv('--ok')+' 35%,transparent)');
+  g.strokeStyle=cv('--master');g.lineWidth=1.4;g.setLineDash([4,4]);g.beginPath();g.moveTo(X(0),Y(r.Trms));g.lineTo(X(m.nm),Y(r.Trms));g.stroke();g.setLineDash([]);
+  g.fillStyle=cv('--master');g.textAlign='left';g.textBaseline='bottom';g.fillText('RMS',X(40),Y(r.Trms)-3);
+  [[Math.abs(r.Ta),'accel'],[Math.abs(r.Tc),'cruise'],[Math.abs(r.Td),'brake']].forEach(([t,l],k)=>{
+    g.fillStyle=cv('--sig');g.strokeStyle=ink;g.lineWidth=1.5;g.beginPath();g.arc(X(r.n),Y(t),6,0,7);g.fill();g.stroke();
+    g.fillStyle=ink;g.textAlign='left';g.textBaseline='middle';g.fillText(l,X(r.n)+12,Y(t)+(k-1)*11);
+  });
+  g.fillStyle=muted;g.textAlign='right';g.textBaseline='top';g.fillText(m.n+' example motor',left+pw,top+2);
+}
+function frame(){
+  if(!$('#view-sizing').hidden){drawProfile();drawTS()}
+  requestAnimationFrame(frame);
+}
+document.querySelectorAll('#view-sizing input,#view-sizing select').forEach(e=>{e.addEventListener('input',()=>{if(e.id!=='szMech'||true)update()});e.addEventListener('change',update)});
+update();requestAnimationFrame(frame);
+})();
+</script>
+<script>
+(()=>{
+'use strict';
+const $=s=>document.querySelector(s);
+const NS='http://www.w3.org/2000/svg',D2R=Math.PI/180;
+const cv=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function E(p,t,a){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e}
+function fit(c,h){const dpr=Math.min(window.devicePixelRatio||1,2),w=c.clientWidth;if(c.width!==Math.round(w*dpr)||c.height!==Math.round(h*dpr)){c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);c.style.height=h+'px'}const g=c.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);return[g,w,h]}
+const f=(v,d)=>Number.isFinite(v)?v.toFixed(d):'–';
+const NSK={'vector-effect':'non-scaling-stroke'};
+let playing=true,rpm=15,last=0;
+$('#mPlay').onclick=()=>{playing=!playing;$('#mPlay').textContent=playing?'Pause':'Play'};
+$('#mRpm').oninput=e=>{rpm=parseFloat(e.target.value);$('#v_mRpm').textContent=rpm+' rpm'};$('#v_mRpm').textContent=rpm+' rpm';
+const UN={rpN:' teeth',rpF:' N',rpM:' kg',crG:' mm',crA:' mm',crB:' mm',crC:' mm',crJ:' kg·cm²',csR:' mm',csL:' mm',csE:' mm',csM:' kg'};
+const P={};
+function bind(id,cb){const e=$('#'+id),v=$('#v_'+id);const up=()=>{P[id]=parseFloat(e.value);v.textContent=e.value+UN[id]};e.oninput=()=>{up();cb()};up()}
+
+/* driver: continuous rotation or ping-pong inside feasible range */
+function mkDrv(){return{th:0,dir:1,full:true,lo:0,hi:360,none:false}}
+function setRange(d,ok){
+  d.none=!ok.some(Boolean);d.full=ok.every(Boolean);
+  if(d.full||d.none){d.lo=0;d.hi=360;return}
+  let best=0,bs=0,run=0,st=0;
+  for(let i=0;i<720;i++){if(ok[i%360]){if(!run)st=i;run++;if(run>best&&run<=360){best=run;bs=st}}else run=0}
+  d.lo=bs;d.hi=bs+best-1;
+  if(d.th<d.lo||d.th>d.hi)d.th=d.lo;
+}
+function adv(d,deg){
+  if(d.none)return;
+  if(d.full){d.th=((d.th+deg)%360+360)%360;return}
+  const a=Math.abs(deg),s=Math.sign(deg)||1;
+  d.th+=a*d.dir*(s);
+  if(d.th>d.hi){d.th=d.hi;d.dir*=-1}else if(d.th<d.lo){d.th=d.lo;d.dir*=-1}
+}
+/* chart */
+function chart(c,data,th,o){
+  const[g,W,H]=fit(c,320);g.clearRect(0,0,W,H);
+  const left=58,right=12,pw=W-left-right,lh=(H-56)/2-6;
+  const grid=cv('--grid'),muted=cv('--muted'),ink=cv('--ink'),sig=cv('--sig');
+  g.font='11px '+cv('--mono');
+  [[o.n1,data.out],[o.n2,data.ratio]].forEach(([name,arr],i)=>{
+    const y0=8+i*(lh+22);
+    let mn=1e9,mx=-1e9;arr.forEach(v=>{if(Number.isFinite(v)){if(v<mn)mn=v;if(v>mx)mx=v}});
+    if(mn>mx){mn=0;mx=1}if(mn>0&&i===1)mn=0;if(mx<0&&i===1)mx=0;
+    if(mx-mn<1e-6){mx+=1;mn-=1}const pd=(mx-mn)*0.1;mn-=pd;mx+=pd;
+    const X=d=>left+d/360*pw,Y=v=>y0+lh-(v-mn)/(mx-mn)*lh;
+    g.fillStyle=cv('--bg');g.fillRect(left,y0,pw,lh);
+    arr.forEach((v,k)=>{if(!Number.isFinite(v)){g.fillStyle='color-mix(in srgb,'+cv('--bad')+' 18%,transparent)';g.fillRect(X(k),y0,pw/360+0.5,lh)}});
+    if(mn<0&&mx>0){g.strokeStyle=grid;g.lineWidth=1;g.beginPath();g.moveTo(left,Y(0));g.lineTo(left+pw,Y(0));g.stroke()}
+    g.fillStyle=muted;g.textAlign='right';g.textBaseline='middle';g.fillText(f(mx,mx>20?0:2),left-5,y0+6);g.fillText(f(mn,mn<-20||mx>20?0:2),left-5,y0+lh-6);
+    g.save();g.translate(11,y0+lh/2);g.rotate(-Math.PI/2);g.textAlign='center';g.fillStyle=ink;g.fillText(name,0,0);g.restore();
+    g.strokeStyle=sig;g.lineWidth=2.4;g.beginPath();let pen=false;
+    arr.forEach((v,k)=>{if(!Number.isFinite(v)){pen=false;return}pen?g.lineTo(X(k),Y(v)):g.moveTo(X(k),Y(v));pen=true});g.stroke();
+    const t=((th%360)+360)%360,idx=Math.round(t)%360,v=arr[idx];
+    g.strokeStyle=muted;g.setLineDash([3,4]);g.beginPath();g.moveTo(X(t),y0);g.lineTo(X(t),y0+lh);g.stroke();g.setLineDash([]);
+    if(Number.isFinite(v)){g.fillStyle=cv('--master');g.beginPath();g.arc(X(t),Y(v),5,0,7);g.fill()}
+  });
+  g.fillStyle=muted;g.textAlign='center';g.textBaseline='top';
+  for(let d=0;d<=360;d+=90)g.fillText(d+'°',left+d/360*pw,H-30);
+  g.textAlign='right';g.fillText('crank angle  (shaded = linkage cannot assemble)',left+pw,H-15);
+}
+function sample(ev,scale){
+  const out=new Array(360),ratio=new Array(360);
+  for(let i=0;i<360;i++){const r=ev(i*D2R);out[i]=r?r.out:NaN}
+  for(let i=0;i<360;i++){const a=ev((i-0.5)*D2R),b=ev((i+0.5)*D2R);let dl=a&&b?b.out-a.out:NaN;if(scale==='deg')dl=((dl+540)%360+360)%360-180;ratio[i]=a&&b?dl/(scale==='deg'?1:D2R):NaN}
+  if(scale==='deg'){let off=0,pv=NaN;for(let i=0;i<360;i++){const v=out[i];if(!Number.isFinite(v)){pv=NaN;continue}if(Number.isFinite(pv)){const d=v+off-pv;if(d>180)off-=360;else if(d<-180)off+=360}out[i]=v+off;pv=out[i]}}
+  return{out,ratio,ok:out.map(Number.isFinite)};
+}
+function fitView(svg,pts,pad){
+  let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;pts.forEach(([x,y])=>{if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y});
+  const w=x1-x0,h=y1-y0,m=Math.max(w,h)*pad;
+  svg.setAttribute('viewBox',`${x0-m} ${-(y1+m)} ${w+2*m} ${h+2*m}`);
+  return Math.max(w,h);
+}
+const line=(p,col,w)=>E(p,'line',Object.assign({stroke:col,'stroke-width':w,'stroke-linecap':'round'},NSK));
+function setL(l,a,b){l.setAttribute('x1',a[0]);l.setAttribute('y1',a[1]);l.setAttribute('x2',b[0]);l.setAttribute('y2',b[1])}
+function setC(c,p){c.setAttribute('cx',p[0]);c.setAttribute('cy',p[1])}
+
+/* ===== rack and pinion ===== */
+const RP={drv:mkDrv(),g:null,pin:null,rack:null,x:0};
+function rpBuild(){
+  const svg=$('#rackSvg');svg.innerHTML='';
+  const N=P.rpN,R=100,p=2*Math.PI*R/N,m=p/Math.PI,cx=320,cy=215,yp=cy-R;
+  RP.p=p;RP.R=R;
+  const ink=cv('--ink');
+  // rack
+  const rackG=E(svg,'g',{});RP.rack=E(rackG,'g',{});
+  E(rackG,'rect',{x:-300,y:yp-1.25*m-60,width:1240,height:60,fill:'var(--fb)',stroke:'var(--line)'});
+  const span=5*p;
+  for(let j=-8;j<Math.ceil(640/p)+8;j++){
+    const xc=cx+(j+0.5)*p,hl=((j%5)+5)%5===0;
+    E(RP.rack,'polygon',{points:`${xc-0.34*p},${yp-1.25*m} ${xc+0.34*p},${yp-1.25*m} ${xc+0.16*p},${yp+m} ${xc-0.16*p},${yp+m}`,fill:hl?'var(--master)':'var(--fb)',stroke:'var(--line)','stroke-width':1});
+  }
+  RP.span=span;RP.cx=cx;
+  // pinion
+  RP.pin=E(svg,'g',{});
+  const pg=E(RP.pin,'g',{transform:`translate(${cx},${cy})`});RP.pg=pg;
+  const Rd=R-1.25*m,Ra=R+m;
+  for(let k=0;k<N;k++){
+    const rot=k*360/N;
+    E(pg,'polygon',{points:`${-0.33*p},${-Rd} ${0.33*p},${-Rd} ${0.16*p},${-Ra} ${-0.16*p},${-Ra}`,transform:`rotate(${rot})`,fill:k===0?'var(--slave)':'var(--panel)',stroke:'var(--sig)','stroke-width':1.6});
+  }
+  E(pg,'circle',{r:Rd,fill:'var(--panel)',stroke:'var(--sig)','stroke-width':1.6});
+  E(pg,'circle',{r:Rd*0.3,fill:'var(--fbhead)',stroke:'var(--line)'});
+  E(pg,'line',{x1:0,y1:0,x2:0,y2:-Rd*0.9,stroke:'var(--slave)','stroke-width':3,'stroke-linecap':'round'});
+  E(svg,'circle',{cx:cx,cy:cy,r:5,fill:'var(--ink)'});
+  // pitch line and pitch radius label
+  E(svg,'line',{x1:cx-150,y1:yp,x2:cx+150,y2:yp,stroke:'var(--muted)','stroke-dasharray':'4 4'});
+  E(svg,'line',{x1:cx,y1:cy,x2:cx+R*0.0,y2:yp,stroke:'var(--muted)','stroke-dasharray':'3 3'});
+  const t=E(svg,'text',{x:cx+8,y:cy-R*0.5,fill:'var(--muted)','font-size':13,'font-family':'IBM Plex Mono,monospace'});t.textContent='r = '+P.rpN+' mm';
+  RP.arrow=E(svg,'text',{x:560,y:30,fill:'var(--ink)','font-size':14,'text-anchor':'end','font-family':'IBM Plex Mono,monospace'});
+  const d=sample(th=>({out:P.rpN*th}),'rad');RP.data=d;setRange(RP.drv,d.ok);
+}
+function rpUpdate(){
+  const th=RP.drv.th*D2R,r=P.rpN;
+  RP.pg.setAttribute('transform',`translate(${RP.cx},320) rotate(0)`);
+  RP.pg.setAttribute('transform',`translate(${RP.cx},215) rotate(${RP.drv.th})`);
+  const xr=RP.R*th; // px
+  const sp=RP.span,off=((xr%sp)+sp)%sp;
+  RP.rack.setAttribute('transform',`translate(${off},0)`);
+  const x=r*th,v=r*(rpm*Math.PI/30),torque=P.rpF*r/1000,J=P.rpM*Math.pow(r/1000,2)*1e4;
+  RP.arrow.textContent=`rack travel ${f(x,1)} mm`;
+  $('#rackRead').innerHTML=`Pinion angle ${f(RP.drv.th,0)}°, rack position ${f(x,1)} mm, speed ${f(Math.abs(v),0)} mm/s<br>`+
+   `Travel per pinion revolution: ${f(2*Math.PI*r,1)} mm · ratio ${f(r,0)} mm/rad (constant)<br>`+
+   `${P.rpF} N thrust needs ${f(torque,2)} N·m at the pinion · ${f(P.rpM,1)} kg reflects ${f(J,2)} kg·cm²`;
+  chart($('#rackChart'),RP.data,RP.drv.th,{n1:'Rack position (mm)',n2:'Ratio (mm/rad)'});
+}
+/* ===== crank-rocker ===== */
+const CR={drv:mkDrv()};
+function crEval(th){
+  const g=P.crG,a=P.crA,b=P.crB,c=P.crC;
+  const Ax=a*Math.cos(th),Ay=a*Math.sin(th),dx=g-Ax,dy=-Ay,d=Math.hypot(dx,dy);
+  if(d>b+c||d<Math.abs(b-c)||d<1e-9)return null;
+  const l=(b*b-c*c+d*d)/(2*d),h2=b*b-l*l;if(h2<0)return null;
+  const h=Math.sqrt(h2),ux=dx/d,uy=dy/d;
+  const Bx=Ax+l*ux-h*uy,By=Ay+l*uy+h*ux;
+  const phi=Math.atan2(By,Bx-g)/D2R;
+  const v1=[Ax-Bx,Ay-By],v2=[g-Bx,-By];
+  let mu=Math.acos((v1[0]*v2[0]+v1[1]*v2[1])/(b*c))/D2R;
+  return{out:phi,A:[Ax,Ay],B:[Bx,By],mu};
+}
+function crBuild(){
+  const svg=$('#crSvg');svg.innerHTML='';const w=E(svg,'g',{transform:'scale(1,-1)'});
+  const d=sample(crEval,'deg');CR.data=d;setRange(CR.drv,d.ok);
+  const pts=[[0,0],[P.crG,0]],trace=[],sweep=[];
+  for(let i=0;i<360;i+=3){const r=crEval(i*D2R);if(r){pts.push(r.A,r.B);trace.push([(r.A[0]+r.B[0])/2,(r.A[1]+r.B[1])/2]);sweep.push(r.B)}}
+  const sz=fitView(svg,pts,0.12);CR.sz=sz;const rp=sz*0.016;
+  E(w,'path',Object.assign({d:sweep.map((p,i)=>(i?'L':'M')+p[0]+','+p[1]).join(' '),fill:'none',stroke:'var(--ok)',opacity:.35,'stroke-width':1.5},NSK));
+  E(w,'path',Object.assign({d:trace.map((p,i)=>(i?'L':'M')+p[0]+','+p[1]).join(' ')+(CR.drv.full?'Z':''),fill:'none',stroke:'var(--muted)','stroke-dasharray':'4 4','stroke-width':1.3},NSK));
+  line(w,'var(--line)',2).setAttribute('stroke-dasharray','5 5');setL(w.lastChild,[0,0],[P.crG,0]);
+  CR.crank=line(w,'var(--master)',9);CR.coup=line(w,'var(--slave)',8);CR.rock=line(w,'var(--ok)',9);
+  [[0,0],[P.crG,0]].forEach(p=>E(w,'circle',{cx:p[0],cy:p[1],r:rp*1.5,fill:'var(--ink)'}));
+  CR.jA=E(w,'circle',{r:rp,fill:'var(--panel)',stroke:'var(--ink)','stroke-width':1.5,...NSK});CR.jB=E(w,'circle',{r:rp,fill:'var(--panel)',stroke:'var(--ink)','stroke-width':1.5,...NSK});
+  CR.msg=null;
+  const g=P.crG,a=P.crA,b=P.crB,c=P.crC,L=[['g',g],['a',a],['b',b],['c',c]].sort((x,y)=>x[1]-y[1]);
+  const s=L[0],l=L[3],pq=L[1][1]+L[2][1],gr=s[1]+l[1]<=pq+1e-9;
+  CR.type=!gr?'non-Grashof (triple rocker): no link can turn fully':s[0]==='a'?'Grashof crank-rocker':s[0]==='g'?'Grashof double-crank (drag link)':s[0]==='b'?'Grashof double-rocker':'Grashof, rocker c is the shortest link (c can turn fully, a cannot)';
+  CR.gr=`shortest + longest = ${f(s[1]+l[1],0)} ${gr?'≤':'>'} other two = ${f(pq,0)}`;
+  // metrics
+  const ph=d.out.filter(Number.isFinite),mus=[];for(let i=0;i<360;i++){const r=crEval(i*D2R);if(r)mus.push(Math.min(r.mu,180-r.mu))}
+  CR.swing=ph.length?Math.max(...ph)-Math.min(...ph):NaN;CR.mu=mus.length?Math.min(...mus):NaN;
+  CR.maxR=Math.max(0,...d.ratio.filter(Number.isFinite).map(Math.abs));
+  CR.qr=null;
+  if(CR.drv.full){let imax=d.out.indexOf(Math.max(...ph)),imin=d.out.indexOf(Math.min(...ph));const fw=((imax-imin)%360+360)%360;CR.qr={fw,bk:360-fw,r:Math.max(fw,360-fw)/Math.min(fw,360-fw)}}
+}
+function crUpdate(){
+  const r=crEval(CR.drv.th*D2R),O=[0,0],O4=[P.crG,0];
+  if(r){setL(CR.crank,O,r.A);setL(CR.coup,r.A,r.B);setL(CR.rock,O4,r.B);setC(CR.jA,r.A);setC(CR.jB,r.B)}
+  const i=Math.round(CR.drv.th)%360,ratio=CR.data.ratio[(i+360)%360],J=P.crJ*ratio*ratio;
+  let t=`<b>${CR.type}</b><br>${CR.gr}<br>`;
+  if(CR.drv.none)t='<span class="bad">These lengths cannot form a linkage. Make links longer or the ground link shorter.</span>';
+  else{
+    t+=CR.drv.full?'Crank turns fully. ':`<span class="bad">Crank cannot turn fully</span>, it swings between ${f(CR.drv.lo,0)}° and ${f(CR.drv.hi%360,0)}°. `;
+    t+=`<br>Rocker swing ${f(CR.swing,1)}°`;
+    if(CR.qr)t+=` · quick-return ratio ${f(CR.qr.r,2)} (${f(CR.qr.fw,0)}° forward, ${f(CR.qr.bk,0)}° back)`;
+    t+=`<br>Min transmission angle <span class="${CR.mu<40?'bad':'good'}">${f(CR.mu,0)}°</span>${CR.mu<40?' (weak, below 40°)':''}`;
+    t+=`<br>Now: crank ${f(CR.drv.th%360,0)}°, rocker ${r?f(r.out,1):'–'}°, ratio dφ/dθ ${f(ratio,2)} (peak ${f(CR.maxR,2)})`;
+    t+=`<br>Reflected load inertia: now ${f(J,1)}, worst ${f(P.crJ*CR.maxR*CR.maxR,1)} kg·cm²`;
+  }
+  $('#crRead').innerHTML=t;
+  chart($('#crChart'),CR.data,CR.drv.th,{n1:'Rocker angle (°)',n2:'Ratio dφ/dθ'});
+}
+/* ===== crank-slider ===== */
+const CS={drv:mkDrv()};
+function csEval(th){
+  const a=P.csR,L=P.csL,e=P.csE,s=a*Math.sin(th)-e,q=L*L-s*s;if(q<0)return null;
+  const x=a*Math.cos(th)+Math.sqrt(q);return{out:x,A:[a*Math.cos(th),a*Math.sin(th)],S:[x,e]};
+}
+function csBuild(){
+  const svg=$('#csSvg');svg.innerHTML='';const w=E(svg,'g',{transform:'scale(1,-1)'});
+  const d=sample(csEval,'rad');CS.data=d;setRange(CS.drv,d.ok);
+  const a=P.csR,L=P.csL,e=P.csE,pts=[[0,0],[-a,-a],[a,a]];
+  for(let i=0;i<360;i+=3){const r=csEval(i*D2R);if(r){pts.push(r.A,r.S)}}
+  const sw=Math.max(18,L*0.22),sh=sw*0.62;
+  pts.push([Math.max(...pts.map(p=>p[0]))+sw/2,e+sh],[Math.min(...pts.map(p=>p[0]))-sw*0.2,e-sh]);
+  const sz=fitView(svg,pts,0.1),rp=sz*0.016;
+  const okx=d.out.filter(Number.isFinite),xmin=okx.length?Math.min(...okx):0,xmax=okx.length?Math.max(...okx):0;
+  E(w,'circle',Object.assign({cx:0,cy:0,r:a,fill:'none',stroke:'var(--muted)','stroke-dasharray':'3 4','stroke-width':1.2},NSK));
+  E(w,'rect',Object.assign({x:xmin-sw*0.7,y:e-sh*1.25,width:(xmax-xmin)+sw*1.4,height:sh*2.5,fill:'none',stroke:'var(--line)','stroke-width':1.5,rx:rp},NSK));
+  [xmin,xmax].forEach(x=>E(w,'line',Object.assign({x1:x,y1:e-sh*1.5,x2:x,y2:e+sh*1.5,stroke:'var(--muted)','stroke-dasharray':'2 3','stroke-width':1},NSK)));
+  CS.crank=line(w,'var(--master)',9);CS.rod=line(w,'var(--slave)',7);
+  CS.sl=E(w,'rect',Object.assign({width:sw,height:sh,rx:rp,fill:'color-mix(in srgb,var(--ok) 35%,var(--panel))',stroke:'var(--ok)','stroke-width':2.5},NSK));CS.sw=sw;CS.sh=sh;
+  E(w,'circle',{cx:0,cy:0,r:rp*1.5,fill:'var(--ink)'});
+  CS.jA=E(w,'circle',Object.assign({r:rp,fill:'var(--panel)',stroke:'var(--ink)','stroke-width':1.5},NSK));CS.jS=E(w,'circle',Object.assign({r:rp,fill:'var(--panel)',stroke:'var(--ink)','stroke-width':1.5},NSK));
+  CS.stroke=xmax-xmin;CS.xmin=xmin;CS.xmax=xmax;
+  CS.maxR=Math.max(0,...d.ratio.filter(Number.isFinite).map(Math.abs));
+  let pa=0;for(let i=0;i<360;i++){const s=Math.abs(a*Math.sin(i*D2R)-e)/L;if(s<=1)pa=Math.max(pa,Math.asin(s)/D2R)}CS.pa=pa;
+  CS.qr=null;
+  if(CS.drv.full&&okx.length){const imax=d.out.indexOf(xmax),imin=d.out.indexOf(xmin),fw=((imin-imax)%360+360)%360;CS.qr={fw,bk:360-fw,r:Math.max(fw,360-fw)/Math.max(1e-9,Math.min(fw,360-fw))}}
+}
+function csUpdate(){
+  const r=csEval(CS.drv.th*D2R);
+  if(r){setL(CS.crank,[0,0],r.A);setL(CS.rod,r.A,r.S);setC(CS.jA,r.A);setC(CS.jS,r.S);CS.sl.setAttribute('x',r.S[0]-CS.sw/2);CS.sl.setAttribute('y',r.S[1]-CS.sh/2)}
+  const i=(Math.round(CS.drv.th)%360+360)%360,ratio=CS.data.ratio[i],v=ratio*(rpm*Math.PI/30);
+  const Jn=P.csM*Math.pow(ratio/1000,2)*1e4,Jw=P.csM*Math.pow(CS.maxR/1000,2)*1e4;
+  let t='';
+  if(CS.drv.none)t='<span class="bad">The rod is too short to reach. Lengthen the rod or shorten the crank or offset.</span>';
+  else{
+    t+=CS.drv.full?'Crank turns fully. ':`<span class="bad">Crank cannot turn fully</span> (rod shorter than r + |e|), it swings between ${f(CS.drv.lo,0)}° and ${f(CS.drv.hi%360,0)}°. `;
+    t+=`<br>Stroke ${f(CS.stroke,1)} mm · rod/crank ${f(P.csL/P.csR,1)} : 1${P.csL/P.csR<3?' <span class="bad">(short rod, strong side force)</span>':''}`;
+    t+=`<br>Max rod pressure angle ${f(CS.pa,0)}°`;
+    if(CS.qr)t+=` · quick-return ratio ${f(CS.qr.r,2)} (${f(CS.qr.fw,0)}° out, ${f(CS.qr.bk,0)}° back)`;
+    t+=`<br>Now: crank ${f(CS.drv.th%360,0)}°, slider ${r?f(r.out,1):'–'} mm, ratio dx/dθ ${f(ratio,1)} mm/rad (peak ${f(CS.maxR,1)}), speed ${f(Math.abs(v),0)} mm/s`;
+    t+=`<br>${f(P.csM,1)} kg reflects ${f(Jn,2)} kg·cm² now, worst ${f(Jw,2)} kg·cm². Thrust F needs torque ${f(CS.maxR/1000,3)}·F N·m at the worst angle.`;
+  }
+  $('#csRead').innerHTML=t;
+  chart($('#csChart'),CS.data,CS.drv.th,{n1:'Slider position (mm)',n2:'Ratio dx/dθ (mm/rad)'});
+}
+['rpN'].forEach(id=>bind(id,rpBuild));['rpF','rpM'].forEach(id=>bind(id,()=>{}));
+['crG','crA','crB','crC'].forEach(id=>bind(id,crBuild));bind('crJ',()=>{});
+['csR','csL','csE'].forEach(id=>bind(id,csBuild));bind('csM',()=>{});
+rpBuild();crBuild();csBuild();
+function frame(ts){
+  const dt=Math.min(0.05,(ts-last)/1000||0);last=ts;
+  if(!$('#view-mech').hidden){
+    if(playing){const deg=rpm*6*dt;[RP,CR,CS].forEach(m=>adv(m.drv,deg))}
+    rpUpdate();crUpdate();csUpdate();
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
