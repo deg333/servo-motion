@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Happy Birthday Sean</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden}
+canvas{position:absolute;inset:0;margin:auto;width:min(100vw,177.78vh);height:min(56.25vw,100vh)}
+body.render canvas{width:100vw;height:100vh}
+</style></head>
+<body>
+<canvas id="c" width="1280" height="720"></canvas>
+<script>
+"use strict";
+/* ============================================================================
+   A raymarched sci-fi flight, built entirely in code.
+   One signed-distance-field fragment shader draws the whole world (terrain,
+   rock arches, a ship with a glowing engine, a ringed planet) at half
+   resolution; a film pipeline then adds bright-pass, anamorphic streaks, bloom,
+   screen-space god rays, depth of field + radial motion blur, chromatic
+   aberration, grain and a 2.39:1 letterbox inside a 16:9 frame.
+   Every frame is a pure function of the frame number: renderFrame(n).
+   ========================================================================== */
+const FPS = 24, NF = 192;                    // 8 seconds
+const OW = 1280, OH = 720;                   // output (16:9)
+const PW = 1280, PH = 536;                   // 2.39:1 picture area inside it
+const SW = 640,  SH = 268;                   // scene buffer: half resolution
+const BAR = (OH - PH) / 2;
+
+/* ------------------------------------------------------------------ choreography */
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const sm = (a, b, x) => { x = clamp((x - a) / (b - a), 0, 1); return x * x * (3 - 2 * x); };
+const mix = (a, b, t) => a + (b - a) * t;
+const add = (a, b) => [a[0]+b[0], a[1]+b[1], a[2]+b[2]];
+const sub = (a, b) => [a[0]-b[0], a[1]-b[1], a[2]-b[2]];
+const mul = (a, s) => [a[0]*s, a[1]*s, a[2]*s];
+const dot = (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+const len = a => Math.hypot(a[0], a[1], a[2]);
+const nrm = a => mul(a, 1 / (len(a) || 1));
+const cross = (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+const lerp3 = (a, b, t) => [mix(a[0],b[0],t), mix(a[1],b[1],t), mix(a[2],b[2],t)];
+
+const PLANET_C = [-300, 330, 900];
+const RING_N = nrm([0.33, 0.845, -0.42]);
+const SUN = nrm([-0.02, 0.17, 0.99]);
+
+const pathX = z => 14 * Math.sin(z * 0.011) + 9 * Math.sin(z * 0.027 + 1);
+
+function shipPos(t) {
+  const z = 10 + 55 * t;
+  const e = sm(5.6, 8.3, t);
+  let x = pathX(z) + 5 * Math.sin(t * 1.3 + 0.5) - 34 * sm(6.0, 8.3, t);
+  let y = 14 + 2.2 * Math.sin(t * 0.9) + 68 * e * e;
+  return [x, y, z + 10 * e * e];
+}
+const lateralAccel = (t) => {
+  const h = 0.1;
+  return (shipPos(t + h)[0] - 2 * shipPos(t)[0] + shipPos(t - h)[0]) / (h * h);
+};
+
+function stateAt(frame) {
+  const t = frame / FPS;
+  const P = shipPos(t);
+  const fwd = nrm(sub(shipPos(t + 0.06), shipPos(t - 0.06)));
+
+  // ship basis (columns: left, up, forward), banks into its turns
+  const ax = clamp(lateralAccel(t), -16, 16);
+  const upS0 = nrm([ax * 0.02, 1, 0]);
+  const left = nrm(cross(upS0, fwd));
+  const upS = cross(fwd, left);
+  const shipB = [...left, ...upS, ...fwd];
+  const eng = add(P, add(add(mul(left, 0), mul(upS, 0.0)), mul(fwd, -3.9)));
+
+  // camera: chase from behind with lag, rising above the canyon for the reveal
+  const e2 = sm(6.0, 7.9, t);
+  const Pc = shipPos(t - 0.38);
+  const cam = [Pc[0] + 12 * e2 + 2.5 * Math.sin(t * 0.8), Pc[1] + 5 + 30 * e2 * e2 + 0.8 * Math.sin(t * 1.7), Pc[2]];
+  const dS = nrm(sub(add(P, [0, 3.4, 0]), cam));
+  const dP = nrm(sub(add(PLANET_C, [0, -30, 0]), cam));
+  const fw = nrm(lerp3(dS, dP, 0.9 * sm(6.1, 7.95, t)));
+  const axc = clamp(lateralAccel(t - 0.2), -16, 16);
+  const roll = clamp(-0.03 * axc, -0.35, 0.35) * 0.6 + 0.18 * sm(6.2, 7.6, t);
+  const right0 = nrm(cross(fw, [0, 1, 0]));
+  const up0 = cross(right0, fw);
+  const rt = add(mul(right0, Math.cos(roll)), mul(up0, Math.sin(roll)));
+  const up = sub(mul(up0, Math.cos(roll)), mul(right0, Math.sin(roll)));
+  const fovx = mix(1.0, 1.08, sm(5.8, 7.8, t));
+  const fovy = fovx * PH / PW;
+
+  const proj = (d) => {
+    const s = dot(d, fw);
+    if (s < 0.05) return [[0.5, 0.5], 0];
+    return [[0.5 + 0.5 * dot(d, rt) / s / fovx, 0.5 + 0.5 * dot(d, up) / s / fovy], sm(0.05, 0.3, s)];
+  };
+  const [sunUV, sunVis] = proj(SUN);
+  const [motC] = proj(fwd);
+
+  const focus = mix(len(sub(P, cam)), 650, sm(6.4, 7.3, t));
+  const flick = 0.92 + 0.08 * Math.sin(frame * 2.7) + 0.05 * Math.sin(frame * 7.1 + 1);
+  const fade = sm(0, 0.35, t) * (1 - sm(7.72, 7.99, t));
+  const tf = 0.85 + 0.15 * Math.sin(frame * 3.9) * Math.sin(frame * 1.3);
+  const textA = sm(5.0, 5.45, t) * (t < 6.0 ? tf : 1);
+  const textScale = 1.1 - 0.1 * sm(5.0, 6.2, t);
+  const motion = 0.05 + 0.03 * sm(6.0, 7.2, t);
+  return { t, cam, fw, rt, up, fov: [fovx, fovy], ship: P, shipB, eng, flick,
+           sunUV, sunVis, motC, focus, fade, textA, textScale, motion, frame };
+}
+
+/* --------------------------------------------------------------------- shaders */
+const VS = `#version 300 es
+in vec2 a; void main(){ gl_Position = vec4(a, 0., 1.); }`;
+
+const FS_SCENE = `#version 300 es
+precision highp float;
+out vec4 o;
+uniform vec2 uRes;
+uniform float uFlick;
+uniform vec3 uCam, uFw, uRt, uUp, uShip, uEng, uPC, uRN, uSun;
+uniform vec2 uFov;
+uniform mat3 uShipB;
+const float PR = 140.;
+
+float h21(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+float vn(vec2 p){
+  vec2 i = floor(p), f = fract(p); f = f*f*(3. - 2.*f);
+  return mix(mix(h21(i), h21(i + vec2(1,0)), f.x), mix(h21(i + vec2(0,1)), h21(i + vec2(1,1)), f.x), f.y);
+}
+float fbm(vec2 p, int oct){
+  float a = .5, s = 0.;
+  for (int i = 0; i < 5; i++){ if (i >= oct) break; s += a*vn(p); p = p*2.03 + vec2(17.1, 9.2); a *= .5; }
+  return s;
+}
+float pathX(float z){ return 14.*sin(z*.011) + 9.*sin(z*.027 + 1.); }
+float sdBox(vec3 p, vec3 b){ vec3 q = abs(p) - b; return length(max(q, 0.)) + min(max(q.x, max(q.y, q.z)), 0.); }
+float smin(float a, float b, float k){ float h = max(k - abs(a - b), 0.)/k; return min(a, b) - h*h*k*.25; }
+float ellipsoid(vec3 p, vec3 r){ float k0 = length(p/r), k1 = length(p/(r*r)); return k0*(k0 - 1.)/max(k1, 1e-4); }
+
+// ---- terrain: winding canyon floor between terraced mesas
+float terrH(vec2 p, int oct){
+  float cx = p.x - pathX(p.y);
+  float wall = smoothstep(18., 110., abs(cx));
+  float n = fbm(p*.018, oct);
+  float t = n*7.;
+  float terr = (floor(t) + smoothstep(.55, .95, fract(t)))/7.;
+  float floorH = 1.6*fbm(p*.055 + 7., oct) + .4*sin(p.y*.05 + p.x*.03);
+  return mix(floorH, 8. + 88.*terr + 8.*n, wall);
+}
+// ---- rock arches spanning the flight path
+float archD(vec3 p, float zc, float rad){
+  vec3 q = p - vec3(pathX(zc), 0., zc);
+  float r = 5.;
+  float bb = sdBox(q - vec3(0., 28., 0.), vec3(50. - r, 30. - r, 7. - r)) - r;
+  if (bb > 8.) return bb;
+  float hole = length(q.xy - vec2(0., -2.)) - rad;
+  float d = max(bb, -hole);
+  d -= 3.*fbm(vec2(q.x*.07 + q.y*.11, q.z*.2 + q.y*.05) + zc, 3);
+  return d*.65;
+}
+
+// ---- the ship (local frame: x left, y up, z forward)
+vec2 shipMap(vec3 p){
+  vec3 q = (p - uShip)*uShipB;
+  float bd = length(q);
+  if (bd > 13.) return vec2(bd - 9., 2.);
+  float body = ellipsoid(q, vec3(.85, .45, 3.2));
+  vec3 w = vec3(abs(q.x), q.y, q.z); w.z += w.x*.85;
+  float wing = sdBox(w - vec3(2.2, -.08, -.4), vec3(2.1, .05, .95)) - .04;
+  vec3 f = vec3(abs(q.x) - .75, q.y - .55, q.z + 2.4); f.x += f.y*.35;
+  float fin = sdBox(f, vec3(.04, .5, .72)) - .03;
+  float pod = max(length(q.xy) - .55, abs(q.z + 3.2) - .55);
+  float hull = smin(smin(body, wing, .3), smin(fin, pod, .15), .2);
+  float cock = ellipsoid(q - vec3(0., .32, .9), vec3(.42, .33, 1.));
+  float noz = length(q - vec3(0., 0., -3.85)) - .42;
+  float plume = ellipsoid(q - vec3(0., 0., -5.4), vec3(.3, .3, 1.7*uFlick));
+  vec2 r = vec2(hull, 2.);
+  if (cock < r.x) r = vec2(cock, 6.);
+  if (noz < r.x) r = vec2(noz, 3.);
+  if (plume < r.x) r = vec2(plume, 3.);
+  return r;
+}
+vec2 mapEnv(vec3 p){
+  float d = (p.y > 126.) ? p.y - 120. : (p.y - terrH(p.xz, 4))*.35;
+  vec2 r = vec2(d, 0.);
+  float a = archD(p, 150., 30.);
+  if (a < r.x) r = vec2(a, 1.);
+  a = archD(p, 300., 28.);
+  if (a < r.x) r = vec2(a, 1.);
+  return r;
+}
+vec2 map(vec3 p){
+  vec2 r = mapEnv(p);
+  vec2 s = shipMap(p); if (s.x < r.x) r = s;
+  vec3 q = p - uPC;
+  float dp = length(q) - PR; if (dp < r.x) r = vec2(dp, 4.);
+  if (dp < 2.4*PR){
+    float h = dot(q, uRN), rr = length(q - uRN*h);
+    float dr = max(abs(h) - 2., max(rr - 2.25*PR, 1.35*PR - rr));
+    dr = max(dr, -(abs(rr - 1.84*PR) - .045*PR));
+    dr = max(dr, -(abs(rr - 1.56*PR) - .015*PR));
+    if (dr < r.x) r = vec2(dr, 5.);
+  }
+  return r;
+}
+vec3 calcN(vec3 p, float t){
+  vec2 e = vec2(1., -1.)*(.0015*t + .01);
+  return normalize(e.xyy*map(p + e.xyy).x + e.yyx*map(p + e.yyx).x + e.yxy*map(p + e.yxy).x + e.xxx*map(p + e.xxx).x);
+}
+float softShadow(vec3 ro, vec3 rd){
+  float res = 1., t = .3;
+  for (int i = 0; i < 26; i++){
+    vec3 p = ro + rd*t;
+    float h = min(mapEnv(p).x, shipMap(p).x);
+    res = min(res, 10.*h/t);
+    t += clamp(h, .5, 14.);
+    if (res < .002 || t > 280.) break;
+  }
+  res = clamp(res, 0., 1.);
+  return res*res*(3. - 2.*res);
+}
+float calcAO(vec3 p, vec3 n){
+  float occ = 0., sc = 1.;
+  for (int i = 0; i < 3; i++){
+    float h = .15 + float(i)*.7;
+    occ += (h - mapEnv(p + n*h).x)*sc; sc *= .7;
+  }
+  return clamp(1. - .9*occ/ (1.), 0., 1.);
+}
+
+vec3 fogCol(vec3 rd){ return mix(vec3(.05, .17, .22), vec3(.85, .42, .17), pow(max(dot(rd, uSun), 0.), 4.)*.85)*.9; }
+
+vec3 sky(vec3 rd){
+  float up = clamp(rd.y, 0., 1.);
+  vec3 c = mix(vec3(.055, .2, .26), vec3(.01, .045, .085), smoothstep(0., .55, up));
+  float sd = max(dot(rd, uSun), 0.);
+  c = mix(c, vec3(.55, .28, .14)*.6, pow(1. - up, 7.)*.5);
+  // distant galaxy band + stars
+  vec3 bn = normalize(vec3(.35, .8, -.45));
+  float band = exp(-pow(dot(rd, bn)*3.2, 2.));
+  float cl = vn(rd.xz*5. + rd.y*3.) * vn(rd.xy*9. + 3.);
+  c += (vec3(.1, .32, .4)*.9 + vec3(.35, .12, .08)*cl*2.) * band * cl * .5 * smoothstep(.05, .35, up);
+  vec3 g = floor(rd*260.);
+  c += vec3(.8, .9, 1.) * step(.9975, h21(g.xy + g.z*17.3)) * smoothstep(.08, .4, up) * (.5 + band);
+  c += vec3(1., .5, .2)*(pow(sd, 8.)*.35 + pow(sd, 64.)*.9);
+  c += vec3(1., .75, .45)*(smoothstep(.99945, .9998, sd)*40. + pow(sd, 2500.)*20.);
+  return c;
+}
+vec3 planetShade(vec3 p, vec3 rd){
+  vec3 n = normalize(p - uPC);
+  vec3 tt = normalize(cross(uRN, vec3(0., 0., 1.)));
+  vec3 bb = cross(uRN, tt);
+  float lat = dot(n, uRN), lon = atan(dot(n, bb), dot(n, tt));
+  float band = lat*16. + 2.*vn(vec2(lon*3., lat*8.)) + .8*vn(vec2(lon*9., lat*26.));
+  float b = .5 + .5*sin(band);
+  vec3 alb = mix(vec3(.05, .34, .42), vec3(.95, .72, .48), b);
+  alb = mix(alb, vec3(.75, .28, .12), smoothstep(.55, 1., .5 + .5*sin(band*.45 + 1.))*.6);
+  float nl = dot(n, uSun);
+  float lit = smoothstep(-.4, .45, nl);
+  vec3 col = alb*(vec3(1., .55, .25)*2.7*lit + vec3(.05, .15, .2));
+  float fr = pow(1. - max(dot(n, -rd), 0.), 4.);
+  col += mix(vec3(.1, .45, .6), vec3(1., .5, .2), lit)*fr*(.5 + lit*1.6);
+  return col;
+}
+vec3 ringShade(vec3 p, vec3 rd){
+  vec3 q = p - uPC;
+  float rr = length(q - uRN*dot(q, uRN))/PR;
+  float v = vn(vec2(rr*60., 1.)) * .6 + .4*vn(vec2(rr*190., 2.));
+  vec3 alb = mix(vec3(.45, .3, .22), vec3(.98, .82, .62), v);
+  alb = mix(alb, vec3(.25, .5, .55), smoothstep(1.9, 2.25, rr)*.5);
+  float b = dot(q, uSun), c = dot(q, q) - PR*PR, disc = b*b - c;
+  float shadow = (disc > 0. && b < 0.) ? .06 : 1.;
+  float dif = .35 + .65*abs(dot(uRN, uSun));
+  return alb*(vec3(1., .55, .25)*3.1*dif*shadow + vec3(.03, .08, .1));
+}
+
+vec3 shade(vec3 ro, vec3 rd, float t, float id){
+  vec3 p = ro + rd*t;
+  if (id > 3.5 && id < 4.5) return planetShade(p, rd);
+  if (id > 4.5) return ringShade(p, rd);
+  vec3 n = calcN(p, t);
+  vec3 alb = vec3(.5);
+  float spec = 0., emis = 0.;
+  if (id < 1.5){
+    float nz = vn(p.xz*.35)*.6 + vn(p.xz*1.7 + p.y*.2)*.4;
+    float strata = sin(p.y*.55 + nz*3. + vn(p.xz*.05)*4.);
+    vec3 rock = mix(vec3(.5, .26, .15), vec3(.85, .52, .3), .5 + .5*strata);
+    rock = mix(rock, vec3(.22, .14, .12), smoothstep(.6, 1., nz)*.5);
+    vec3 sand = vec3(.78, .52, .33)*(.85 + .3*vn(p.xz*.6));
+    alb = mix(rock, sand, smoothstep(.55, .9, n.y));
+    n = normalize(n + .18*vec3(vn(p.xz*2.1) - .5, 0., vn(p.zx*2.3 + 5.) - .5));
+  } else if (id < 2.5){
+    vec3 q = (p - uShip)*uShipB;
+    alb = vec3(.64, .68, .72);
+    alb = mix(alb, vec3(.9, .36, .1), smoothstep(2.9, 3.4, abs(q.x))*.9);
+    alb = mix(alb, vec3(.08, .55, .6), step(abs(q.x), .13)*step(.1, q.y));
+    alb *= .8 + .2*step(.5, fract(q.z*1.6));
+    spec = 1.;
+  } else if (id < 3.5){
+    vec3 q = (p - uShip)*uShipB;
+    float k = smoothstep(-3.9, -7., q.z);
+    return (mix(vec3(.9, 1.2, 1.7), vec3(1.6, .6, .15), 1. - k)*(.4 + 1.8*k) + vec3(.4, .9, 1.4)*step(q.z, -3.8)*.0)*uFlick*2.2;
+  } else {
+    alb = vec3(.05, .09, .11); spec = 2.;
+  }
+  vec3 L = uSun;
+  float sh = softShadow(p + n*(.05 + t*.0008), L);
+  float dif = max(dot(n, L), 0.)*sh;
+  float ao = calcAO(p, n);
+  float skyk = .5 + .5*n.y;
+  vec3 amb = mix(vec3(.2, .11, .07)*.55, vec3(.05, .19, .26), skyk);
+  vec3 col = alb*(vec3(1., .52, .2)*3.3*dif + amb*ao*1.5);
+  float fr = pow(1. - max(dot(n, -rd), 0.), 3.);
+  col += mix(vec3(.05, .3, .38), vec3(1., .5, .2), sh)*fr*.18*ao;
+  if (spec > 0.){
+    vec3 rf = reflect(rd, n);
+    col += vec3(1., .6, .3)*pow(max(dot(rf, L), 0.), 24.)*sh*spec*2.5;
+    col += sky(rf)*.25*spec*fr*2.;
+  }
+  vec3 el = uEng - p; float ed = dot(el, el);
+  col += alb*vec3(1., .55, .28)*16.*uFlick/(ed + 14.)*max(dot(n, normalize(el)), 0.);
+  float fg = 1. - exp(-t*.0021);
+  return mix(col, fogCol(rd), fg);
+}
+
+void main(){
+  vec2 uv = gl_FragCoord.xy/uRes*2. - 1.;
+  vec3 ro = uCam;
+  vec3 rd = normalize(uFw + uRt*uv.x*uFov.x + uUp*uv.y*uFov.y);
+  float t = .4, id = -1.; bool hit = false;
+  for (int i = 0; i < 150; i++){
+    vec2 h = map(ro + rd*t);
+    if (h.x < .0016*t + .002){ id = h.y; hit = true; break; }
+    t += max(h.x, .0012*t);
+    if (t > 1700.) break;
+  }
+  vec3 col; float depth;
+  if (hit){ col = shade(ro, rd, t, id); depth = t; }
+  else if (t < 1700. && rd.y < .12){ col = fogCol(rd); depth = 1200.; }
+  else { col = sky(rd); depth = 3000.; }
+  if (hit && id > 3.5) col = mix(col, fogCol(rd), .12);
+  // volumetric engine glow, occluded by geometry
+  vec3 E = uEng; float tE = dot(E - ro, rd);
+  if (tE > 0. && tE < (hit ? t : 1e9)){
+    vec3 c = ro + rd*tE - E; float d2 = dot(c, c);
+    col += (vec3(1., .5, .18)*.55/(d2*.4 + .7) + vec3(.4, .85, 1.)*.7/(d2*2.5 + .6))*uFlick;
+  }
+  o = vec4(col, depth);
+}`;
+
+const TEXT_GLSL = `
+uniform sampler2D uText; uniform float uTextA, uTextScale;
+vec3 textEm(vec2 uv){
+  vec2 tuv = (uv - .5)/uTextScale + .5;
+  if (tuv.x < 0. || tuv.x > 1. || tuv.y < 0. || tuv.y > 1.) return vec3(0.);
+  float m = texture(uText, tuv).r;
+  return (vec3(1., .5, .16)*m*1.25 + vec3(1., .93, .72)*smoothstep(.82, 1., m)*1.7)*uTextA;
+}`;
+
+const FS_BRIGHT = `#version 300 es
+precision highp float; out vec4 o;
+uniform sampler2D uScene; uniform vec2 uRes;` + TEXT_GLSL + `
+void main(){
+  vec2 uv = gl_FragCoord.xy/uRes;
+  vec3 c = texture(uScene, uv).rgb;
+  float l = dot(c, vec3(.3, .55, .15));
+  c *= max(l - 1.1, 0.)/max(l, .001);
+  c = min(c, vec3(24.));
+  o = vec4(c + textEm(uv)*.35, 1.);
+}`;
+
+const FS_COPY = `#version 300 es
+precision highp float; out vec4 o; uniform sampler2D uSrc; uniform vec2 uRes;
+void main(){ o = texture(uSrc, gl_FragCoord.xy/uRes); }`;
+
+const FS_BLUR = `#version 300 es
+precision highp float; out vec4 o; uniform sampler2D uSrc; uniform vec2 uRes, uDir;
+void main(){
+  vec2 uv = gl_FragCoord.xy/uRes, st = uDir/uRes;
+  vec3 c = texture(uSrc, uv).rgb*.227;
+  c += (texture(uSrc, uv + st*1.385).rgb + texture(uSrc, uv - st*1.385).rgb)*.3162;
+  c += (texture(uSrc, uv + st*3.231).rgb + texture(uSrc, uv - st*3.231).rgb)*.0703;
+  o = vec4(c, 1.);
+}`;
+
+const FS_STREAK = `#version 300 es
+precision highp float; out vec4 o; uniform sampler2D uSrc; uniform vec2 uRes;
+void main(){
+  vec2 uv = gl_FragCoord.xy/uRes; vec3 c = vec3(0.); float ws = 0.;
+  for (int i = -24; i <= 24; i++){
+    float w = exp(-abs(float(i))/9.);
+    c += texture(uSrc, uv + vec2(float(i)*2.2/uRes.x, 0.)).rgb*w; ws += w;
+  }
+  o = vec4(c/ws, 1.);
+}`;
+
+const FS_RAYS = `#version 300 es
+precision highp float; out vec4 o; uniform sampler2D uScene; uniform vec2 uRes, uSunUV;
+void main(){
+  vec2 uv = gl_FragCoord.xy/uRes;
+  vec2 d = (uSunUV - uv)/56.*.95; vec2 p = uv + d*fract(sin(dot(uv, vec2(12.9, 78.2)))*437.5);
+  vec3 acc = vec3(0.); float w = 1.;
+  for (int i = 0; i < 56; i++){
+    p += d;
+    vec4 s = texture(uScene, p);
+    float l = dot(s.rgb, vec3(.3, .55, .15));
+    acc += s.rgb*smoothstep(.5, 3., l)*(s.a > 1400. ? 1. : 0.)*w;
+    w *= .962;
+  }
+  o = vec4(acc/56., 1.);
+}`;
+
+const FS_COMP = `#version 300 es
+precision highp float; out vec4 o;
+uniform sampler2D uScene, uB1, uB2, uB3, uStreak, uRays;
+uniform float uFocus, uMotion, uFade, uSunVis, uFrame;
+uniform vec2 uMotC;` + TEXT_GLSL + `
+float hash(vec3 p){ return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719)))*43758.5453); }
+vec3 aces(vec3 x){ return clamp((x*(2.51*x + .03))/(x*(2.43*x + .59) + .14), 0., 1.); }
+void main(){
+  vec2 px = gl_FragCoord.xy;
+  if (px.y < ${BAR}. || px.y >= ${OH - BAR}.){ o = vec4(0., 0., 0., 1.); return; }
+  vec2 uv = vec2(px.x/${PW}., (px.y - ${BAR}.)/${PH}.);
+  vec2 puv = vec2(1./${PW}., 1./${PH}.);
+  float d0 = texelFetch(uScene, ivec2(uv*vec2(${SW}., ${SH}.)), 0).a;
+  float coc = clamp(3.2*abs(d0 - uFocus)/max(d0, 1.), 0., 5.);
+  vec2 dir = uv - uMotC;
+  vec2 ad = dir*vec2(1., ${(PH/PW).toFixed(4)});
+  float r2 = dot(ad, ad)*3.;
+  vec2 ca = dir*vec2(1., .5)*.0075;
+  vec3 acc = vec3(0.);
+  const int N = 16;
+  for (int i = 0; i < N; i++){
+    float fi = float(i);
+    float a = fi*2.39996, rr = sqrt((fi + .5)/float(N));
+    vec2 suv = uv + vec2(cos(a), sin(a))*rr*coc*puv + dir*uMotion*r2*(fi/float(N - 1) - .5);
+    acc += vec3(texture(uScene, suv + ca).r, texture(uScene, suv).g, texture(uScene, suv - ca).b);
+  }
+  vec3 col = acc/float(N);
+  vec3 bloom = texture(uB1, uv).rgb*.45 + texture(uB2, uv).rgb*.7 + texture(uB3, uv).rgb*.95;
+  col += bloom*.42;
+  col += texture(uStreak, uv).rgb*vec3(.3, .8, 1.)*.7;
+  col += texture(uRays, uv).rgb*vec3(1., .62, .3)*.55*uSunVis;
+  col *= 1. - .5*uTextA;
+  col += textEm(uv);
+  col *= 1.05;
+  vec3 c = aces(col);
+  float l = dot(c, vec3(.3, .55, .15));
+  c = mix(c*vec3(.82, 1.02, 1.08) + vec3(0., .012, .02)*(1. - l), c*vec3(1.1, 1., .86), smoothstep(.18, .75, l));
+  c = mix(vec3(l), c, 1.12);
+  c = pow(c, vec3(.96));
+  vec2 q = uv - .5;
+  c *= 1. - dot(q*vec2(1., .9), q*vec2(1., .9))*.9;
+  c += (hash(vec3(px, uFrame)) - .5)*.05;
+  c = pow(max(c, 0.), vec3(1./1.0));
+  o = vec4(c*uFade, 1.);
+}`;
+
+/* ------------------------------------------------------------------- GL set-up */
+const cvs = document.getElementById('c');
+const gl = cvs.getContext('webgl2', { antialias: false, preserveDrawingBuffer: true });
+if (!gl) throw new Error('WebGL2 unavailable');
+gl.getExtension('EXT_color_buffer_float'); gl.getExtension('EXT_color_buffer_half_float');
+gl.getExtension('OES_texture_float_linear');
+
+function compile(type, src){
+  const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) + '\n' + src.split('\n').map((l, i) => (i + 1) + ': ' + l).join('\n'));
+  return s;
+}
+function program(fs){
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, VS)); gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+  gl.bindAttribLocation(p, 0, 'a'); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {}; const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++){ const nm = gl.getActiveUniform(p, i).name; u[nm] = gl.getUniformLocation(p, nm); }
+  return { p, u };
+}
+const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+function target(w, h){
+  const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+  const fb = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('FBO incomplete ' + w + 'x' + h);
+  return { tex, fb, w, h };
+}
+
+const P = {
+  scene: program(FS_SCENE), bright: program(FS_BRIGHT), copy: program(FS_COPY),
+  blur: program(FS_BLUR), streak: program(FS_STREAK), rays: program(FS_RAYS), comp: program(FS_COMP),
+};
+const T = {
+  scene: target(SW, SH),
+  r1: target(SW/2, SH/2), r2: target(SW/4, SH/4), r3: target(SW/8, SH/8),
+  t1: target(SW/2, SH/2), t2: target(SW/4, SH/4), t3: target(SW/8, SH/8),
+  b1: target(SW/2, SH/2), b2: target(SW/4, SH/4), b3: target(SW/8, SH/8),
+  streak: target(SW/4, SH/4), rays: target(SW/2, SH/2),
+};
+
+// the sign: drawn once to a canvas, used as an emissive mask
+const textTex = (() => {
+  const c = document.createElement('canvas'); c.width = PW; c.height = PH;
+  const x = c.getContext('2d'); x.fillStyle = '#000'; x.fillRect(0, 0, PW, PH);
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  const face = '"DejaVu Sans","Helvetica Neue",Arial,sans-serif';
+  const fit = (s, px, maxW) => { x.font = `800 ${px}px ${face}`; const w = x.measureText(s).width; return w > maxW ? Math.floor(px*maxW/w) : px; };
+  const l1 = 'Happy Birthday', l2 = 'Sean!';
+  const s1 = fit(l1, 190, 1120), s2 = fit(l2, 300, 1000);
+  for (const pass of [0, 1]){
+    x.shadowColor = '#fff'; x.shadowBlur = pass ? 0 : 34; x.fillStyle = '#fff';
+    x.font = `800 ${s1}px ${face}`; x.fillText(l1, PW/2, PH*.34);
+    x.font = `800 ${s2}px ${face}`; x.fillText(l2, PW/2, PH*.72);
+  }
+  const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+  return tex;
+})();
+
+function run(prog, out, inputs, set){
+  gl.useProgram(prog.p);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, out ? out.fb : null);
+  const w = out ? out.w : OW, h = out ? out.h : OH;
+  gl.viewport(0, 0, w, h);
+  let unit = 0;
+  for (const [name, tex] of Object.entries(inputs || {})){
+    gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.uniform1i(prog.u[name], unit++);
+  }
+  if (prog.u.uRes) gl.uniform2f(prog.u.uRes, w, h);
+  if (set) set(prog.u);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+
+function renderFrame(frame){
+  const s = stateAt(((frame % NF) + NF) % NF);
+  const textU = u => { gl.uniform1f(u.uTextA, s.textA); gl.uniform1f(u.uTextScale, s.textScale); };
+
+  run(P.scene, T.scene, null, u => {
+    gl.uniform1f(u.uFlick, s.flick);
+    gl.uniform3fv(u.uCam, s.cam); gl.uniform3fv(u.uFw, s.fw); gl.uniform3fv(u.uRt, s.rt); gl.uniform3fv(u.uUp, s.up);
+    gl.uniform2fv(u.uFov, s.fov); gl.uniform3fv(u.uShip, s.ship); gl.uniformMatrix3fv(u.uShipB, false, s.shipB);
+    gl.uniform3fv(u.uEng, s.eng); gl.uniform3fv(u.uPC, PLANET_C); gl.uniform3fv(u.uRN, RING_N); gl.uniform3fv(u.uSun, SUN);
+  });
+  // bright pass (+ the sign, so it blooms), then a 3-level blurred pyramid
+  gl.activeTexture(gl.TEXTURE7); gl.bindTexture(gl.TEXTURE_2D, textTex);
+  const withText = (prog, out, inputs, set) => {
+    run(prog, out, inputs, u => { gl.activeTexture(gl.TEXTURE7); gl.bindTexture(gl.TEXTURE_2D, textTex); gl.uniform1i(u.uText, 7); textU(u); set && set(u); });
+  };
+  withText(P.bright, T.r1, { uScene: T.scene.tex });
+  run(P.copy, T.r2, { uSrc: T.r1.tex });
+  run(P.copy, T.r3, { uSrc: T.r2.tex });
+  for (const [r, t, b] of [[T.r1, T.t1, T.b1], [T.r2, T.t2, T.b2], [T.r3, T.t3, T.b3]]){
+    run(P.blur, t, { uSrc: r.tex }, u => gl.uniform2f(u.uDir, 1, 0));
+    run(P.blur, b, { uSrc: t.tex }, u => gl.uniform2f(u.uDir, 0, 1));
+    run(P.blur, t, { uSrc: b.tex }, u => gl.uniform2f(u.uDir, 1, 0));   // second pass: wider falloff
+    run(P.blur, b, { uSrc: t.tex }, u => gl.uniform2f(u.uDir, 0, 1));
+  }
+  run(P.streak, T.streak, { uSrc: T.r2.tex });                           // anamorphic streaks
+  run(P.rays, T.rays, { uScene: T.scene.tex }, u => gl.uniform2fv(u.uSunUV, s.sunUV)); // god rays
+  withText(P.comp, null, { uScene: T.scene.tex, uB1: T.b1.tex, uB2: T.b2.tex, uB3: T.b3.tex, uStreak: T.streak.tex, uRays: T.rays.tex }, u => {
+    gl.uniform1f(u.uFocus, s.focus); gl.uniform1f(u.uMotion, s.motion); gl.uniform1f(u.uFade, s.fade);
+    gl.uniform1f(u.uSunVis, s.sunVis); gl.uniform1f(u.uFrame, s.frame); gl.uniform2fv(u.uMotC, s.motC);
+  });
+  gl.finish();
+}
+window.renderFrame = renderFrame; window.NF = NF; window.FPS = FPS;
+
+const qs = new URLSearchParams(location.search);
+if (qs.has('render')) document.body.classList.add('render');
+else if (qs.has('frame')) renderFrame(+qs.get('frame'));
+else {                                           // live preview: wall-clock only picks WHICH frame to draw
+  const t0 = performance.now();
+  const tick = () => { renderFrame(Math.floor((performance.now() - t0)/1000*FPS)); requestAnimationFrame(tick); };
+  tick();
+}
+</script></body></html>
