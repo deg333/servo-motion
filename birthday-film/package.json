@@ -5,7 +5,7 @@
   "scripts": {
     "studio": "remotion studio src/index.ts",
     "audio": "node scripts/make-audio.mjs",
-    "render:video": "remotion render src/index.ts BirthdayFilm out/video12.mp4 --gl=swangle --concurrency=4 --crf=14 --muted",
+    "render:video": "remotion render src/index.ts BirthdayFilm out/video12.mp4 --gl=swangle --concurrency=3 --timeout=300000 --crf=14 --muted",
     "finish": "bash scripts/finish.sh",
     "build": "npm run audio && npm run render:video && npm run finish",
     "still": "remotion still src/index.ts BirthdayFilm out/still.png --gl=swangle --frame=95"
